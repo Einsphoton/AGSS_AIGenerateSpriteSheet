@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Pipeline output
+sprite-project/
+views/
+frames/
+videos/
+out/
+_studio/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+node_modules/

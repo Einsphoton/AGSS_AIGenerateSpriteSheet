@@ -1,0 +1,3443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sprite Sheet Studio · 逐帧拼装</title>
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#14181e; --panel2:#1a1f27; --line:#262d38;
+    --txt:#e6eaf2; --mut:#8a93a5; --acc:#5fd39a; --acc2:#6ea8fe; --warn:#f0b46a;
+    --bad:#e2725f; --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg); color:var(--txt); overflow:hidden;
+    font:13px/1.5 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  input,select{font:inherit;color:inherit}
+
+  /* ---------- layout ---------- */
+  .app{display:grid;grid-template-rows:44px 1fr auto auto;height:100vh}
+  .topbar{
+    display:flex;align-items:center;gap:14px;padding:0 14px;
+    background:var(--panel);border-bottom:1px solid var(--line);
+  }
+  .logo{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:.2px}
+  .logo i{
+    width:16px;height:16px;border-radius:3px;display:block;opacity:.9;
+    background:
+      linear-gradient(90deg,var(--acc) 50%,transparent 50%) 0 0/8px 8px,
+      linear-gradient(90deg,transparent 50%,var(--acc) 50%) 0 0/8px 8px;
+  }
+  .spacer{flex:1}
+  .badge{
+    font-family:var(--mono);font-size:10.5px;padding:2px 9px;border-radius:5px;
+    background:rgba(95,211,154,.1);border:1px solid rgba(95,211,154,.3);color:#8fe0b8;
+  }
+  .badge.warn{background:rgba(240,180,106,.1);border-color:rgba(240,180,106,.3);color:#f0c690}
+  .badge.off{background:var(--panel2);border-color:var(--line);color:#5d6675}
+  .ghost{
+    padding:5px 11px;border-radius:7px;border:1px solid var(--line);
+    color:var(--mut);font-size:12px;background:var(--panel2);
+  }
+  .ghost:hover{color:var(--txt);border-color:#394354}
+  .prim{
+    padding:6px 14px;border-radius:7px;font-size:12.5px;font-weight:600;
+    background:linear-gradient(180deg,#63dda2,#43b884);color:#08150f;
+  }
+  .prim:hover{filter:brightness(1.07)}
+  .prim:disabled{opacity:.4;cursor:not-allowed;filter:none}
+
+  main{display:grid;grid-template-columns:288px minmax(360px,1fr) 336px;min-height:0}
+  .col{overflow-y:auto;background:var(--panel);border-right:1px solid var(--line)}
+  .col.right{border-right:none;border-left:1px solid var(--line)}
+  .col::-webkit-scrollbar{width:9px}
+  .col::-webkit-scrollbar-thumb{background:#262d38;border-radius:5px}
+
+  /* ---------- controls ---------- */
+  .sec{padding:11px 14px;border-bottom:1px solid var(--line)}
+  .sec h4{
+    margin:0 0 9px;font-size:10.5px;font-weight:700;letter-spacing:1.1px;
+    text-transform:uppercase;color:var(--mut);display:flex;align-items:center;gap:6px;
+  }
+  .sec h4::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sec h4 em{font-style:normal;color:#4f5869;font-size:9.5px;letter-spacing:0;text-transform:none}
+  .row{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .row:last-child{margin-bottom:0}
+  .row label{flex:0 0 62px;color:var(--mut);font-size:11.5px}
+  .row .val{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--acc2);min-width:34px;text-align:right}
+  input[type=range]{-webkit-appearance:none;flex:1;height:3px;border-radius:2px;background:#2c3442;outline:none}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+    background:var(--txt);border:2px solid var(--panel);cursor:pointer;
+  }
+  select,input[type=number],input[type=text]{
+    background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+    padding:5px 8px;font-size:12px;outline:none;min-width:0;
+  }
+  select:focus,input:focus{border-color:#3f6d5c}
+  .btn{
+    padding:6px 10px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);
+    font-size:11.5px;color:var(--mut);
+  }
+  .btn:hover{color:var(--txt);border-color:#3a4453}
+  .btn.wide{width:100%}
+  .btn.on{color:var(--acc);border-color:rgba(95,211,154,.45);background:rgba(95,211,154,.1)}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
+  .drop{
+    border:1.5px dashed #2f3846;border-radius:8px;padding:7px 8px;text-align:center;
+    color:var(--mut);font-size:11px;cursor:pointer;transition:.15s;line-height:1.45;
+  }
+  .drop:hover,.drop.over{border-color:var(--acc);color:var(--acc);background:rgba(95,211,154,.05)}
+  .swatchrow{display:flex;align-items:center;gap:8px}
+  .swatch{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);flex:0 0 auto}
+  .split2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .note{font-size:10.5px;color:#5d6675;line-height:1.6;margin-top:6px}
+
+  /* 四方向槽位 */
+  .slots{display:grid;gap:4px;grid-template-columns:1fr 1fr;grid-auto-flow:row}
+  .slot{
+    display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:6px;
+    padding:5px 7px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);
+    font-size:11px;cursor:pointer;position:relative;
+  }
+  .slot:hover{border-color:#3a4453}
+  .slot.on{border-color:rgba(110,168,254,.5);background:rgba(110,168,254,.08)}
+  .slot .k{
+    width:18px;height:18px;border-radius:4px;display:grid;place-items:center;
+    background:#0e1218;color:#5d6675;font-family:var(--mono);font-size:10px;
+  }
+  .slot.has .k{background:rgba(95,211,154,.16);color:var(--acc)}
+  .slot .nm{color:var(--mut)}
+  .slot.has .nm{color:var(--txt)}
+  .slot .st{font-family:var(--mono);font-size:10px;color:#4f5869}
+  .slot.has .st{color:var(--acc2)}
+
+  /* 表格（一致性 / 步态） */
+  .ctab{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10.5px}
+  .ctab th{color:#5d6675;font-weight:400;text-align:right;padding:3px 4px;border-bottom:1px solid var(--line)}
+  .ctab th:first-child{text-align:left}
+  .ctab td{text-align:right;padding:2px 4px;color:#b9c2d2;vertical-align:middle}
+  .ctab td:first-child{text-align:left;color:var(--mut)}
+  .ctab tr.short td{color:var(--warn)}
+  .ctab tr.g td:last-child{white-space:nowrap}
+  /* 固定列宽：auto 布局在 260px 窄栏里会把表撑出容器，按钮被裁掉 */
+  #gtab{table-layout:fixed}
+  #gtab th:nth-child(1),#gtab td:nth-child(1){width:26px}
+  #gtab th:nth-child(2),#gtab td:nth-child(2){width:42px}
+  #gtab th:nth-child(3),#gtab td:nth-child(3){width:30px}
+  .stp{
+    width:40px;padding:1px 3px;font-size:10.5px;font-family:var(--mono);
+    background:#0e1218;border:1px solid #2b3341;border-radius:4px;color:var(--txt);
+    text-align:center;
+  }
+  .stp:focus{outline:none;border-color:var(--acc);color:var(--acc)}
+  .stp::-webkit-outer-spin-button,.stp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .stp{-moz-appearance:textfield}
+  #gtab td,#gtab th{padding-left:2px;padding-right:2px}
+  .ctab tr.dim td{color:#454e5c}
+  .nud{
+    display:inline-grid;place-items:center;width:12px;height:14px;border-radius:2px;
+    background:#1e242e;border:1px solid #2b3341;color:#8a93a5;font-size:8px;line-height:1;
+    margin-left:1px;cursor:pointer;
+  }
+  .nud:hover{color:var(--acc);border-color:rgba(95,211,154,.4)}
+  .verdict{
+    margin-top:8px;padding:7px 9px;border-radius:7px;font-size:11px;line-height:1.6;
+    background:rgba(95,211,154,.08);border:1px solid rgba(95,211,154,.28);color:#8fe0b8;
+  }
+  .verdict.warn{background:rgba(240,180,106,.08);border-color:rgba(240,180,106,.3);color:#f0c690}
+
+  /* ---------- stage ---------- */
+  .stage{position:relative;display:flex;flex-direction:column;min-width:0;overflow:hidden;
+    background:radial-gradient(circle at 50% 42%,#151a21 0%,#0b0d10 72%);}
+  .pwrap{
+    flex:1;min-height:0;display:grid;gap:10px;padding:44px 16px 36px;
+    align-content:center;justify-content:center;
+  }
+  .pv{
+    position:relative;display:grid;place-items:center;border-radius:6px;
+    background:#0d1014;box-shadow:0 0 0 1px #232a35;
+  }
+  .pv canvas{display:block;image-rendering:pixelated;border-radius:3px}
+  .pv .tag{
+    position:absolute;left:6px;top:5px;font-family:var(--mono);font-size:10px;
+    color:#8a93a5;background:rgba(9,12,16,.78);border:1px solid #232a35;
+    padding:1px 6px;border-radius:4px;pointer-events:none;white-space:nowrap;
+  }
+  .pv .msg{
+    position:absolute;inset:0;display:grid;place-items:center;
+    font-size:11.5px;color:#4a5361;pointer-events:none;text-align:center;line-height:1.7;
+  }
+  .hudplay{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:1px 7px;border-radius:9px;font-size:10.5px;
+    background:#1a2130;border:1px solid #263043;color:#7f8b9e;
+  }
+  .hudplay.on{color:#79e08a;border-color:#2c4a34;background:#16241a}
+  .hudplay i{
+    width:5px;height:5px;border-radius:50%;background:currentColor;
+    animation:blink 1.1s ease-in-out infinite;
+  }
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .hudplay:not(.on) i{animation:none;border-radius:1px;width:4px;height:7px}
+  .hud{
+    position:absolute;top:9px;left:14px;right:14px;display:flex;gap:7px;
+    font-family:var(--mono);font-size:10.5px;color:var(--mut);pointer-events:none;flex-wrap:wrap;
+  }
+  .hud span{background:rgba(12,15,19,.82);border:1px solid var(--line);padding:2px 8px;border-radius:5px}
+  .hud span.good{color:var(--acc);border-color:rgba(95,211,154,.3)}
+  .hud span.bad{color:var(--bad);border-color:rgba(226,114,95,.3)}
+  .transport{
+    display:flex;align-items:center;gap:9px;padding:8px 16px;
+    border-top:1px solid var(--line);background:var(--panel);
+    white-space:nowrap;overflow-x:auto;
+  }
+  .transport::-webkit-scrollbar{height:0}
+  .tbtn{
+    width:29px;height:29px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);
+    display:grid;place-items:center;color:var(--mut);
+  }
+  .tbtn:hover{color:var(--txt)}
+  .tbtn.play{background:rgba(95,211,154,.14);color:var(--acc);border-color:rgba(95,211,154,.4)}
+  .transport .row{margin:0;flex:0 0 auto}
+  /* 分段控件：单 / 2×2 / 1×4 与背景切换。原来是一个 ⊞ 循环按钮，
+     四方向同屏这个功能藏在一个图标后面，基本没人发现。 */
+  .seg{
+    display:inline-flex;align-items:center;border-radius:7px;overflow:hidden;
+    background:var(--panel2);border:1px solid var(--line);flex:0 0 auto;
+  }
+  .seg button{
+    all:unset;box-sizing:border-box;padding:4px 8px;font-size:10.5px;line-height:1.5;
+    color:var(--mut);cursor:pointer;text-align:center;min-width:22px;
+    font-family:var(--mono);letter-spacing:-.2px;white-space:nowrap;
+  }
+  .seg button + button{border-left:1px solid var(--line)}
+  .seg button:hover{color:var(--txt);background:#1f2632}
+  .seg button.on{background:rgba(95,211,154,.16);color:var(--acc)}
+  /* 背景风格条：贴在预览右下角。放传输条里会把「洋葱皮/参考线」挤成竖排。 */
+  .bgbar{
+    position:absolute;right:14px;bottom:52px;z-index:3;
+    display:flex;align-items:center;gap:3px;padding:4px 6px;border-radius:8px;
+    background:rgba(11,14,18,.9);border:1px solid var(--line);
+    box-shadow:0 4px 14px rgba(0,0,0,.45);
+  }
+  .bgbar .lb{font-size:9.5px;color:#5d6675;font-family:var(--mono);margin-right:2px}
+  .bgbar button{
+    all:unset;box-sizing:border-box;width:19px;height:19px;border-radius:4px;
+    display:grid;place-items:center;cursor:pointer;border:1px solid #2b3341;
+  }
+  .bgbar button:hover{border-color:#4a5a72}
+  .bgbar button.on{border-color:var(--acc);box-shadow:0 0 0 1px rgba(95,211,154,.4)}
+  .sw{display:block;width:11px;height:11px;border-radius:2px}
+  .toggle{display:flex;align-items:center;gap:5px;color:var(--mut);font-size:11.5px;cursor:pointer;user-select:none;white-space:nowrap;flex:0 0 auto}
+  .toggle input{accent-color:var(--acc);width:13px;height:13px}
+
+  /* ---------- 候选池 ---------- */
+  .dirbar{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:9px 12px 8px}
+  .dt{
+    display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 4px 5px;
+    border-radius:7px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--mut);font-size:12px;line-height:1.25;cursor:pointer;position:relative;
+  }
+  .dt:hover{border-color:#3d4a5c;color:var(--txt)}
+  .dt.on{background:rgba(95,211,154,.13);color:var(--acc);border-color:rgba(95,211,154,.55);
+    box-shadow:inset 0 0 0 1px rgba(95,211,154,.18)}
+  .dt .lb{font-weight:600}
+  .dt .sub{font-family:var(--mono);font-size:9px;color:#6b7686;letter-spacing:-.2px}
+  .dt.on .sub{color:var(--acc2)}
+  .dt.none{opacity:.42}
+  .dt .d{position:absolute;right:5px;top:5px;width:5px;height:5px;border-radius:50%;background:#313a47}
+  .dt.has .d{background:var(--acc)}
+
+  /* 顶部：正在编辑谁 */
+  .focusbar{
+    display:flex;align-items:center;gap:8px;margin:0 12px 6px;padding:5px 9px;
+    background:rgba(95,211,154,.07);border:1px solid rgba(95,211,154,.22);border-radius:7px;
+    font-size:11px;color:#93a0b3;
+  }
+  .focusbar b{color:var(--acc);font-weight:600}
+  .focusbar .mono{font-family:var(--mono);color:var(--acc2)}
+  .striphead{display:flex;align-items:center;gap:7px;padding:9px 12px 6px}
+  .striphead b{font-size:12px}
+  .striphead .n{font-family:var(--mono);font-size:11px;color:var(--acc);margin-left:2px}
+  .hint{font-size:10px;color:#5d6675;padding:0 12px 7px;line-height:1.6}
+  .grid{display:grid;gap:6px;padding:0 12px 14px}
+  .grid.g4{grid-template-columns:1fr}
+  .grid.g1{grid-template-columns:repeat(3,1fr)}
+  .cell{
+    position:relative;border-radius:7px;overflow:hidden;border:1.5px solid #232a35;
+    background:#0d1014;cursor:pointer;
+  }
+  .grid.g1 .cell{aspect-ratio:1}
+  /* 参考模式：主图在上，其它三个方向的同序号小图在下面排一行 */
+  .grid.g1.ref .cell{aspect-ratio:auto;display:flex;flex-direction:column;gap:3px;padding-bottom:3px}
+  .grid.g1.ref .cell .main{width:100%;aspect-ratio:1;position:relative}
+  .grid.g1.ref .cell .refs{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:0 4px;
+  }
+  .grid.g1.ref .cell .refs figure{margin:0;position:relative}
+  .grid.g1.ref .cell .refs canvas{display:block;width:100%;height:auto;image-rendering:pixelated;border-radius:2px}
+  .grid.g1.ref .cell .refs figcaption{
+    position:absolute;left:1px;bottom:0;font-family:var(--mono);font-size:7.5px;
+    color:#c6cfdd;background:rgba(9,12,16,.8);padding:0 2px;border-radius:2px;line-height:1.35;
+  }
+  /* 参考模式下主图占了整格，时间戳挪到主图右上，右下留给「槽」角标 */
+  .grid.g1.ref .cell .tm{right:3px;bottom:auto;top:3px}
+  .cell:hover{border-color:#4a5a72}
+  .cell.intl{border-color:rgba(95,211,154,.85);box-shadow:0 0 0 1px rgba(95,211,154,.45)}
+  .cell canvas{display:block;image-rendering:pixelated}
+  .grid.g1 .cell canvas{width:100%;height:100%}
+  .grid.g4 .cell canvas{width:100%;height:auto}
+  .cell .idx{
+    position:absolute;left:3px;top:2px;font-family:var(--mono);font-size:9px;
+    background:rgba(0,0,0,.7);color:#aeb8c8;padding:0 3px;border-radius:3px;z-index:2;
+  }
+  .cell.intl .idx{background:var(--acc);color:#08150f;font-weight:700}
+  .cell .tm{
+    position:absolute;right:3px;bottom:2px;font-family:var(--mono);font-size:8.5px;
+    color:#7d8798;background:rgba(0,0,0,.55);padding:0 3px;border-radius:3px;z-index:2;
+  }
+  .cell .used{
+    position:absolute;right:3px;bottom:3px;font-family:var(--mono);font-size:8px;line-height:1.5;
+    background:rgba(95,211,154,.9);color:#08150f;font-weight:700;
+    padding:0 3px;border-radius:3px;pointer-events:none;
+  }
+  .cell .ct{
+    position:absolute;right:3px;top:2px;font-family:var(--mono);font-size:8.5px;
+    color:#0b0d10;background:var(--warn);padding:0 3px;border-radius:3px;z-index:2;font-weight:700;
+  }
+  /* 手工追加的 PNG：和抽出来的帧区分开，否则用户不知道自己拼的帧在哪 */
+  .cell .ex{
+    position:absolute;left:3px;bottom:3px;font-family:var(--mono);font-size:8px;
+    color:#0b0d10;background:#9d8bff;padding:0 3px;border-radius:3px;z-index:2;font-weight:700;
+  }
+  .empty{padding:26px 14px;text-align:center;color:#5d6675;font-size:11.5px;line-height:1.8}
+  /* 往候选区拖文件时给个边，和左侧「换素材」区分开 */
+  .col.right.over{outline:1px dashed var(--acc);outline-offset:-6px}
+
+  /* ---------- 时间轴 ---------- */
+  .timeline{background:var(--panel);border-top:1px solid var(--line)}
+  .tlhead{display:flex;align-items:center;gap:8px;padding:8px 14px 0}
+  .tlhead b{font-size:12px}
+  .tlhead .n{font-family:var(--mono);font-size:11px;color:var(--acc)}
+  .tlhint{font-family:var(--mono);font-size:9.5px;color:#4f5869}
+  .tlstrip{
+    display:flex;gap:7px;padding:8px 14px 10px;overflow-x:auto;align-items:flex-start;
+    min-height:100px;scrollbar-width:thin;
+  }
+  .tlstrip::-webkit-scrollbar{height:8px}
+  .tlstrip::-webkit-scrollbar-thumb{background:#2a323e;border-radius:4px}
+  .tslot{
+    position:relative;flex:0 0 auto;border-radius:8px;border:1.5px solid #232a35;
+    background:#0d1014;padding:4px;cursor:grab;transition:border-color .12s;
+  }
+  .tslot:hover{border-color:#4a5a72}
+  .tslot.on{border-color:var(--acc);box-shadow:0 0 0 1px rgba(95,211,154,.4)}
+  .tslot.drag{opacity:.32}
+  .tslot .g4t{display:grid;grid-template-columns:repeat(2,40px);gap:1px}
+  .tslot canvas{display:block;image-rendering:pixelated;border-radius:2px}
+  .tslot .tn{
+    position:absolute;left:-5px;top:-5px;font-family:var(--mono);font-size:9px;
+    background:#0b0d10;border:1px solid #2b3341;color:#8a93a5;padding:0 4px;
+    border-radius:4px;z-index:3;line-height:14px;
+  }
+  .tslot.on .tn{background:var(--acc);color:#08150f;border-color:var(--acc)}
+  .tslot .tdel{
+    position:absolute;right:-6px;top:-6px;width:15px;height:15px;border-radius:50%;
+    background:#2a1c1c;border:1px solid #4a2c2c;color:#e2725f;font-size:10px;line-height:1;
+    display:none;place-items:center;z-index:4;cursor:pointer;
+  }
+  .tslot:hover .tdel{display:grid}
+  .tslot.add{
+    width:72px;height:88px;border-style:dashed;border-color:#2f3846;color:#4f5869;
+    display:grid;place-items:center;font-size:18px;cursor:pointer;
+  }
+  .tslot.add:hover{border-color:var(--acc);color:var(--acc)}
+  .tlempty{padding:14px 6px;color:#5d6675;font-size:11.5px}
+
+  /* ---------- 时间轴：每方向一行 ---------- */
+  .tlrows{max-height:min(228px,34vh);overflow-y:auto;padding:5px 12px 6px;scrollbar-width:thin}
+  .tlrows::-webkit-scrollbar{width:8px}
+  .tlrows::-webkit-scrollbar-thumb{background:#2a323e;border-radius:4px}
+  .tlrow{display:grid;grid-template-columns:136px 1fr;gap:8px;align-items:start}
+  .tlrow + .tlrow{margin-top:2px;padding-top:2px;border-top:1px dashed #1d232c}
+  .tlrowhd{display:flex;align-items:center;gap:4px;padding-top:3px;flex-wrap:nowrap;cursor:pointer}
+  .tlrowhd .dl{
+    font-size:11px;font-weight:700;width:18px;height:18px;border-radius:4px;
+    display:grid;place-items:center;background:#1a2130;border:1px solid #263043;color:#8a93a5;
+  }
+  .tlrow.on .tlrowhd .dl{background:var(--acc);border-color:var(--acc);color:#08150f}
+  .tlrowhd .cnt{font-family:var(--mono);font-size:10px;color:var(--acc2)}
+  .tlrowhd .mini{
+    width:16px;height:16px;border-radius:4px;background:var(--panel2);border:1px solid var(--line);
+    color:var(--mut);font-size:9px;line-height:1;display:grid;place-items:center;padding:0;flex:0 0 auto;
+  }
+  .tlrowhd .mini:hover{color:var(--txt);border-color:#3a4453}
+  .tlrow .tlstrip{min-height:44px;padding:2px 2px 2px}
+  .tlrow.dim .tlstrip{opacity:.42;filter:saturate(.6)}
+  .tlrow.dim .tlrowhd{opacity:.6}
+  .tlrow.on{background:linear-gradient(90deg,rgba(95,211,154,.06),transparent 62%);
+    box-shadow:inset 2px 0 0 var(--acc)}
+  .tslot .g1t{display:block}
+  .tlrow .tslot.add{width:40px;height:42px;font-size:14px}
+
+  /* ---------- bottom ---------- */
+  .bottombar{
+    display:flex;align-items:center;gap:13px;padding:7px 16px;
+    background:var(--panel);border-top:1px solid var(--line);flex-wrap:wrap;
+  }
+  .bottombar .row{margin:0;flex:0 0 auto}
+  .bottombar .row label{flex:0 0 auto}
+  .bottombar input[type=number]{width:56px}
+  .bottombar input[type=text]{width:112px}
+  .divider{width:1px;height:20px;background:var(--line)}
+
+  .toast{
+    position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(12px);
+    background:#1e2530;border:1px solid #334;color:var(--txt);padding:9px 16px;border-radius:8px;
+    font-size:12px;opacity:0;pointer-events:none;transition:.25s;z-index:99;
+  }
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{border-color:#5a3030;color:#f2a2a2}
+
+  /* ---------- modal ---------- */
+  .modal{
+    position:fixed;inset:0;background:rgba(6,8,11,.82);backdrop-filter:blur(4px);
+    display:none;align-items:center;justify-content:center;z-index:120;padding:32px;
+  }
+  .modal.on{display:flex}
+  .modal .box{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    max-width:94vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.6);
+  }
+  .modal .head{
+    display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line);
+    font-size:12.5px;
+  }
+  .modal .head .meta{font-family:var(--mono);font-size:11px;color:var(--mut)}
+  .modal .body{padding:16px;overflow:auto;background:repeating-conic-gradient(#12161c 0 25%,#0d1014 0 50%) 0 0/16px 16px}
+  .modal canvas{image-rendering:pixelated;display:block;border-radius:4px}
+  .modal .foot{display:flex;gap:10px;padding:12px 16px;border-top:1px solid var(--line);justify-content:flex-end}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="logo"><i></i>Sprite Sheet Studio</div>
+    <span style="font-family:var(--mono);font-size:10.5px;color:#4f5869">逐帧拼装 · 四方向同拍</span>
+    <span id="topBadge" class="badge off">待载入</span>
+    <div class="spacer"></div>
+    <button class="ghost" id="btnHelp">流程说明</button>
+    <a class="ghost" href="demo/preview.html" target="_blank" rel="noopener"
+       style="text-decoration:none;display:inline-flex;align-items:center"
+       title="用导出的 sheet 直接播动画（新窗口）">动画预览 ↗</a>
+    <span id="env" style="font-family:var(--mono);font-size:10.5px;color:#5d6675"></span>
+  </header>
+
+  <main>
+  <!-- ============ LEFT ============ -->
+  <aside class="col left">
+
+    <div class="sec">
+      <h4>四方向素材 <em>视频 / GIF / 图片序列</em></h4>
+      <div class="slots" id="slots"></div>
+      <div class="drop" id="drop" style="margin-top:9px">
+        拖入 <b>视频 或 GIF</b>（按文件名分方向）<br>
+        <span style="font-size:10px;color:#4a5361">PNG 拖进来 = 追加到候选帧</span><br>
+        或点这里选文件
+      </div>
+      <input type="file" id="file" accept="video/*,image/*,.gif" multiple hidden>
+      <input type="file" id="filePng" accept="image/png,image/webp,image/jpeg,.gif" multiple hidden>
+      <div style="display:grid;grid-template-columns:1.15fr .95fr .8fr;gap:5px;margin-top:7px">
+        <button class="btn" id="btnDemo4">载入帧序列</button>
+        <button class="btn" id="btnDemo">载入单个</button>
+        <button class="btn" id="btnClear">清空</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px">
+        <button class="btn" id="btnImport" title="视频 / GIF → 作为该方向的素材，可重新抽帧">导入视频·GIF</button>
+        <button class="btn" id="btnPngAdd" title="PNG 逐张追加到当前方向候选池末尾（1:1，不重采样）">＋ 追加 PNG</button>
+      </div>
+      <label class="toggle" style="margin-top:8px">
+        <input type="checkbox" id="mirror"> 右向 = 左向水平翻转
+      </label>
+      <div class="note">四方向独立生成时落地时机对不上；镜像保证左右完全同相。</div>
+    </div>
+
+    <div class="sec" id="vidBox" style="display:none">
+      <h4>版本化视频 <em>videos/</em></h4>
+      <div class="row">
+        <label>版本</label>
+        <select id="vidSel" style="flex:1"></select>
+      </div>
+      <button class="btn" id="btnVidLoad" style="width:100%;margin-top:6px">载入这个版本的视频</button>
+      <div class="note" id="vidNote">每次渲染的原始 mp4 都在 videos/ 里，文件名带版本号。</div>
+    </div>
+
+    <div class="sec">
+      <h4>一致性检查 <em>步长 / 覆盖度</em></h4>
+      <table class="ctab" id="ctab"></table>
+      <div class="verdict" id="verdict">载入素材后显示</div>
+    </div>
+    <div class="sec">
+      <h4>采样 <em>抽候选 → 自己拼</em></h4>
+      <div class="row">
+        <label>目标帧数</label>
+        <input type="range" id="count" min="2" max="32" step="1" value="12">
+        <span class="val" id="countV">12</span>
+      </div>
+      <div class="row">
+        <label>候选密度</label>
+        <select id="mult" style="flex:1">
+          <option value="1">1× · 只抽目标帧数</option>
+          <option value="2" selected>2× · 抽两倍再挑</option>
+          <option value="3">3× · 抽三倍再挑</option>
+          <option value="4">4× · 全抽</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>起点</label>
+        <input type="range" id="tStart" min="0" max="100" step="0.5" value="0">
+        <span class="val" id="tStartV">0%</span>
+      </div>
+      <div class="row">
+        <label>终点</label>
+        <input type="range" id="tEnd" min="0" max="100" step="0.5" value="100">
+        <span class="val" id="tEndV">100%</span>
+      </div>
+      <div class="split2" style="margin-top:2px">
+        <button class="btn" id="btnResample">重新抽帧</button>
+        <button class="btn" id="btnTlFill2">依次填满</button>
+      </div>
+      <div class="note" id="sampleInfo">候选帧会列在右侧，点一下就加到时间轴。</div>
+    </div>
+
+    <div class="sec">
+      <h4>步态相位 <em>四方向同拍</em></h4>
+      <table class="ctab" id="gtab"></table>
+      <div class="split2" style="margin-top:7px">
+        <button class="btn" id="btnAlignPhase">自动对齐</button>
+        <button class="btn" id="btnResetPhase">清零</button>
+      </div>
+      <div class="note">「接触」= 这一步真正落地的那一帧（身体最低点）。四方向都从接触帧起步，播起来才在同一拍上。<br>▶ 平移一步（换脚），› 微调一帧。</div>
+    </div>
+
+    <div class="sec">
+      <h4>抠图 · Chroma Key <em>全局共用</em></h4>
+      <div class="row swatchrow">
+        <label style="flex:0 0 auto">键色</label>
+        <div class="swatch" id="swatch"></div>
+        <button class="btn" id="btnPick" style="flex:1">吸管取色</button>
+      </div>
+      <div class="row"><label>容差</label><input type="range" id="tol" min="0" max="100" value="42"><span class="val" id="tolV">42</span></div>
+      <div class="row"><label>软边</label><input type="range" id="soft" min="0" max="100" value="32"><span class="val" id="softV">32</span></div>
+      <div class="row"><label>去溢色</label><input type="range" id="despill" min="0" max="100" value="65"><span class="val" id="despillV">65</span></div>
+      <div class="row"><label>边缘收缩</label><input type="range" id="erode" min="0" max="3" step="1" value="1"><span class="val" id="erodeV">1</span></div>
+    </div>
+
+    <div class="sec">
+      <h4>对齐 · 稳定 <em>四方向同基线</em></h4>
+      <div class="row">
+        <label>锚点</label>
+        <select id="align" style="flex:1">
+          <option value="footlock">底部中心 · 方向级常数锚点（推荐，保留起伏）</option>
+          <option value="footy">贴地锁定 · 逐帧贴脚线（会压平上下起伏）</option>
+          <option value="frame">逐帧包围盒 · 消漂移</option>
+          <option value="center">包围盒中心 · 逐帧</option>
+          <option value="none">不校正 · 保留漂移</option>
+        </select>
+      </div>
+      <div class="row"><label>偏移 X</label><input type="range" id="offX" min="-60" max="60" step="1" value="0"><span class="val" id="offXV">0</span></div>
+      <div class="row"><label>偏移 Y</label><input type="range" id="offY" min="-60" max="60" step="1" value="0"><span class="val" id="offYV">0</span></div>
+      <div class="row"><label>边距</label><input type="range" id="pad" min="0" max="16" step="1" value="3"><span class="val" id="padV">3</span></div>
+    </div>
+
+    <div class="sec">
+      <h4>像素化 <em>全方向同网格</em></h4>
+      <div class="row">
+        <label>像素化</label>
+        <select id="pxMode" style="flex:1">
+          <option value="h48">目标高 48px</option>
+          <option value="h64">目标高 64px</option>
+          <option value="h96" selected>目标高 96px</option>
+          <option value="h128">目标高 128px</option>
+          <option value="b4">像素块 · 4×</option>
+          <option value="b6">像素块 · 6×</option>
+          <option value="b8">像素块 · 8×</option>
+          <option value="off">关闭 · 原分辨率</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>缩放基准</label>
+        <select id="norm" style="flex:1">
+          <option value="each">每方向归一化（推荐）</option>
+          <option value="global">全方向共用一个分母</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>调色板</label>
+        <select id="palette" style="flex:1">
+          <option value="0">关闭</option>
+          <option value="8">8 色</option>
+          <option value="12">12 色</option>
+          <option value="16">16 色</option>
+          <option value="24">24 色</option>
+          <option value="32" selected>32 色</option>
+        </select>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ============ CENTER ============ -->
+  <section class="stage">
+    <div class="hud">
+      <span id="hudPlay" class="hudplay">—</span>
+      <span id="hudDir">—</span>
+      <span id="hudMode">—</span>
+      <span id="hudFrame">—</span>
+      <span id="hudCell">—</span>
+      <span id="hudPal">—</span>
+    </div>
+    <div class="pwrap" id="pwrap"></div>
+    <div class="bgbar" id="segBg" title="预览背景：棋盘看透明区，纯色看实际观感">
+      <span class="lb">背景</span>
+      <button data-bg="dcheck" title="深色棋盘（默认）"><i class="sw"></i></button>
+      <button data-bg="lcheck" title="浅色棋盘"><i class="sw"></i></button>
+      <button data-bg="black" title="纯黑"><i class="sw"></i></button>
+      <button data-bg="white" title="纯白"><i class="sw"></i></button>
+      <button data-bg="gray" title="中性灰 50%"><i class="sw"></i></button>
+      <button data-bg="magenta" title="洋红（查边缘杂色）"><i class="sw"></i></button>
+    </div>
+    <div class="transport">
+      <button class="tbtn" id="btnPrev" title="上一槽">◀</button>
+      <button class="tbtn play" id="btnPlay" title="播放 / 暂停">▶</button>
+      <button class="tbtn" id="btnNext" title="下一槽">▶</button>
+      <div class="row" style="flex:0 0 132px">
+        <label style="flex:0 0 auto">帧率</label>
+        <input type="range" id="fps" min="2" max="30" step="1" value="10">
+        <span class="val" id="fpsV">10</span>
+      </div>
+      <label class="toggle"><input type="checkbox" id="onion"> 洋葱皮</label>
+      <label class="toggle"><input type="checkbox" id="guides" checked> 参考线</label>
+      <div class="seg" id="segCmp" title="预览布局：只看当前方向，或四个方向同屏">
+        <button data-cmp="focus" title="只看当前方向（快捷键 1）">单</button>
+        <button data-cmp="2x2" title="四方向 2×2 同屏（快捷键 2）">2×2</button>
+        <button data-cmp="1x4" title="四方向横排同屏（快捷键 3）">1×4</button>
+      </div>
+      <div class="spacer"></div>
+      <label class="toggle"><input type="checkbox" id="loop" checked> 循环</label>
+    </div>
+  </section>
+
+  <!-- ============ RIGHT ============ -->
+  <aside class="col right">
+    <div class="dirbar" id="dirbar"></div>
+    <div class="focusbar">
+      <span id="focusTxt">先在上方选一个方向</span>
+      <div class="spacer"></div>
+      <span class="mono" id="focusSlots">0 槽</span>
+    </div>
+    <div class="striphead">
+      <b>候选帧</b><span class="n" id="candN">0</span>
+      <div class="spacer"></div>
+      <button class="btn" id="btnExtraClear" style="display:none"
+              title="移除手工追加的 PNG，只留从素材抽出来的帧">清附加</button>
+      <button class="btn" id="btnPngAdd2" title="PNG 逐张追加到当前方向的候选池末尾">＋PNG</button>
+      <button class="btn" id="btnGrid4" title="每格右边附一条其它方向的参考小图（只是对照，不会加错方向）">参考</button>
+    </div>
+    <div class="hint" id="candHint">
+      <b>点一下</b> 追加到当前方向 · <b>Alt+点</b> 替换选中槽 · <b>Shift+点</b> 插入<br>
+      <span style="color:#4f5869">绿色角标 = 这一帧已被用在第几槽 · 紫色「附加」= 手工导入的 PNG</span>
+    </div>
+    <div class="grid g1" id="grid"></div>
+    <div class="empty" id="gridEmpty">还没有帧<br>先在左侧载入视频 / GIF<br>
+      <span style="font-size:10px;color:#4a5361">PNG 可以直接拖进来追加到候选</span></div>
+  </aside>
+  </main>
+
+  <!-- ============ TIMELINE ============ -->
+  <section class="timeline">
+    <div class="tlhead">
+      <b>时间轴</b><span class="n" id="tlN">0 帧</span>
+      <label class="toggle" title="开启后：点一次候选帧，四行一起加（按各自步态相位换算到同一时刻）。默认关闭 —— 先专心拼一个方向。">
+        <input type="checkbox" id="link"> 四方向同步加帧
+      </label>
+      <button class="btn" id="btnTlFill">依次填满</button>
+      <button class="btn" id="btnTlClear">清空</button>
+      <button class="btn" id="btnTlRev">反序</button>
+      <button class="btn" id="btnTlDup">复制末帧</button>
+      <button class="btn" id="btnTlSync" title="把当前方向这一行，按步态相位换算后复制到其它三个方向">复制到其它方向</button>
+      <div class="spacer"></div>
+      <span class="tlhint">每行一个方向 · 点行首切换编辑谁 · 拖动排序 · 双击复制 · ×删除</span>
+    </div>
+    <div class="tlrows" id="tlrows"></div>
+  </section>
+
+  <footer class="bottombar">
+    <div class="row"><label>列数</label><input type="number" id="cols" value="0" min="0" max="64" title="0 = 自动"></div>
+    <div class="row"><label>间距</label><input type="number" id="gap" value="0" min="0" max="32"></div>
+    <div class="row"><label>放大</label>
+      <select id="scale" style="width:64px">
+        <option>1</option><option>2</option><option selected>4</option><option>6</option><option>8</option>
+      </select>
+    </div>
+    <div class="divider"></div>
+    <label class="toggle"><input type="checkbox" id="merge" checked> 四方向合并（每行一个方向）</label>
+    <div class="divider"></div>
+    <div class="row"><label>文件名</label><input type="text" id="fname" value="walk"></div>
+    <div class="spacer"></div>
+    <button class="ghost" id="btnJson">导出 JSON</button>
+    <button class="prim" id="btnPng">导出 Sprite Sheet</button>
+  </footer>
+</div>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <div class="head">
+      <b>Sprite Sheet 预览</b>
+      <span class="meta" id="mMeta"></span>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn" id="mClose">关闭</button>
+    </div>
+    <div class="body"><canvas id="mCanvas"></canvas></div>
+    <div class="foot">
+      <button class="ghost" id="mJson">同时导出 JSON</button>
+      <button class="prim" id="mSave">下载 PNG</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+
+/* =====================================================================
+   数据模型 v2 —— 每个方向一条独立时间轴
+   ---------------------------------------------------------------------
+   旧模型把四方向焊死在一个槽对象里（seq[s] = {front:3,...}），好处是永远
+   同拍，坏处是「前视第 3 帧配后视第 5 帧」这种手工挑选根本表达不出来：
+   改一个方向就会连坐另外三个。
+
+   现在改成四份独立的索引列表：
+     seqs.front = [0, 5, 11, ...]     // 该方向时间轴上第 k 槽取第几个候选
+   长度可以不同，顺序可以不同，导出时每行各自铺自己的帧。
+
+   四方向之间的「同拍」由两件事保证，都不靠焊死：
+     1) normalizeSeq() 铺初始时间轴时，每个方向都按「自己整步」等分 P.count
+        格（u = k/n 映射到 contact + u×stride），所以四行描述的是同一段时间。
+     2) 联动加帧（P.link）开启时，在一个方向上点的帧会按相位换算成另外三个
+        方向的候选序号再追加，四行长度保持同步。
+   想手工给某个方向单独配帧时把联动关掉即可。
+   ===================================================================== */
+
+const DIRS = [
+  { id:'front', label:'前', key:'f' },
+  { id:'back',  label:'后', key:'b' },
+  { id:'left',  label:'左', key:'l' },
+  { id:'right', label:'右', key:'r' },
+];
+
+const P = {
+  count: 12, mult: 4,
+  tStart: 0, tEnd: 100,
+  key: [35, 233, 20],
+  tol: 42, soft: 32, despill: 65, erode: 1,
+  align: 'footlock', offX: 0, offY: 0, pad: 3, steps: {},
+  pxMode: 'h96', palette: 32, norm: 'each',
+  fps: 10, onion: false, guides: true, grid4: false, loop: true,
+  cols: 0, gap: 0, scale: 4, merge: true, fname: 'walk',
+  // grid4  = 候选格里附其它方向的参考小图（只是对照，默认关）
+  // link   = 点一帧四行一起加（默认关：先专心拼一个方向）
+  // cmpMode= focus 只看当前方向 / 2x2 四方向网格 / 1x4 四方向横排
+  // bg     = 预览底板（棋盘判断透明，纯色判断实际观感，洋红查杂边）
+  mirrorRight: false, link: false, cmpMode: 'focus', bg: 'dcheck',
+};
+
+let G = { s:1, f:0, px:0, py:0, cellW:0, cellH:0, outW:0, outH:0, pad:0,
+          palN:0, sMin:1, sMax:1 };
+
+const tracks = DIRS.map(d => ({
+  id: d.id, label: d.label,
+  video: null, url: null, images: null,
+  raw: [], keyed: [], scaled: [], frames: [],
+  /* extras = 手工拖进来的 PNG（原始 ImageBitmap）。它们不进 raw：
+     raw 是「等间隔采样」的结果，步态分析（周期/接触帧）依赖这个前提，
+     掺进相位无关的帧会把整条时间轴的对齐算错。extras 只排在候选池末尾。 */
+  extras: [], nExtra: 0,
+  times: [], cand: 0,
+  duration: 0, vw: 0, vh: 0,
+  stat: null, gait: null, dirty: true,
+  frozen: false, mirrorSig: '', sampleRev: 0,
+}));
+
+/* 四份独立索引列表 —— 唯一真相 */
+const seqs = { front: [], back: [], left: [], right: [] };
+let seqSel = 0;          // 当前聚焦槽（四行共用槽号）
+
+let active = 0;
+let playing = false, playIdx = 0, lastT = 0, rafId = 0;
+let picking = false, rebuildToken = 0, building = false, lastClicked = 0;
+
+const tr = () => tracks[active];
+const withSrc = () => tracks.filter(t => t.video || t.images);
+const live = () => tracks.filter(t => t.frames.length);
+const tOf = id => tracks.find(t => t.id === id);
+
+/* ===================== 时间轴数据层 ===================== */
+const arrOf = id => (seqs[id] || (seqs[id] = []));
+const lenOf = id => arrOf(id).length;
+/* 时间轴总槽数 = 各行里最长的那条 */
+function tLen() {
+  let n = 0;
+  for (const t of live()) n = Math.max(n, lenOf(t.id));
+  return n;
+}
+/* 第 i 槽在某方向上取第几个候选（超长则回绕，短行就循环自己的帧） */
+function candAt(id, i) {
+  const a = arrOf(id);
+  return a.length ? a[wrapIdx(i, a.length)] : null;
+}
+function frameAtSlot(t, i) {
+  const k = candAt(t.id, i);
+  return k === null ? null : t.frames[k];
+}
+/* 某方向整步之内，候选序号 idx 处在什么位置 u∈[0,1) */
+function uOf(t, idx) {
+  const g = t.gait || {};
+  const S = effStride(t);
+  if (!(S > 0)) return 0;
+  let u = ((idx - (g.contact || 0)) / S) % 1;
+  return u < 0 ? u + 1 : u;
+}
+/* 把 u 换算成另一方向的候选序号 */
+function idxAtU(t, u) {
+  const g = t.gait || {};
+  return wrapIdx(Math.round((g.contact || 0) + u * effStride(t)), t.frames.length);
+}
+
+/* ===================== 基础工具 ===================== */
+let toastT = 0;
+function toast(msg, err) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.className = 'toast on' + (err ? ' err' : '');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.className = 'toast', 2400);
+}
+const yieldFrame = () => new Promise(r => requestAnimationFrame(() => r()));
+const wrapIdx = (i, n) => n > 0 ? ((i % n) + n) % n : 0;
+
+/* ===================== 采样 ===================== */
+function seek(video, t) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const finish = () => { if (done) return; done = true; resolve(); };
+    video.addEventListener('seeked', finish, { once: true });
+    setTimeout(finish, 1200);
+    try {
+      video.currentTime = Math.min(Math.max(t, 0), Math.max(0, (video.duration || 0) - 0.001));
+    } catch (e) { reject(e); }
+  }).then(() => new Promise(r => requestAnimationFrame(() => r())));
+}
+
+const MAXDIM = 768;
+
+/* 候选数 = 目标帧数 × 密度。目标帧数只用于「依次填满」的默认长度。 */
+async function sampleTrack(t) {
+  const want = Math.max(2, Math.round(P.count * P.mult));
+  t.raw = []; t.times = [];
+
+  if (t.images) {
+    const total = t.images.length;
+    const n = Math.min(want, total);
+    t.cand = n;
+    for (let i = 0; i < n; i++) {
+      const idx = Math.min(total - 1, Math.floor(i * total / n));
+      t.raw.push(t.images[idx]);
+      t.times.push(idx / Math.max(1, total - 1));
+    }
+    t.sampleRev = (t.sampleRev || 0) + 1;
+    return;
+  }
+
+  const v = t.video;
+  if (!v) return;
+  const dur = v.duration || t.duration || 1;
+  const t0 = (P.tStart / 100) * dur;
+  const t1 = (P.tEnd / 100) * dur;
+  const span = Math.max(0.02, t1 - t0);
+  t.cand = want;
+
+  for (let i = 0; i < want; i++) {
+    // 取区间中点：循环动画首尾通常重合，中点采样能均匀铺满一个周期
+    const time = t0 + span * (i + 0.5) / want;
+    await seek(v, Math.min(time, Math.max(0, dur - 0.01)));
+    const w = v.videoWidth, h = v.videoHeight;
+    if (!w || !h) continue;
+    const sc = Math.min(1, MAXDIM / Math.max(w, h));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(w * sc); cv.height = Math.round(h * sc);
+    cv.getContext('2d', { willReadFrequently: true }).drawImage(v, 0, 0, cv.width, cv.height);
+    t.raw.push(await createImageBitmap(cv));
+    t.times.push(time / dur);
+  }
+  t.sampleRev = (t.sampleRev || 0) + 1;
+}
+
+/* ===================== chroma key ===================== */
+const CB = (r, g, b) => -0.168736*r - 0.331264*g + 0.5*b;
+const CR = (r, g, b) => 0.5*r - 0.418688*g - 0.081312*b;
+
+function keyBitmap(bmp) {
+  const w = bmp.width, h = bmp.height;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0);
+  const id = ctx.getImageData(0, 0, w, h);
+  const d = id.data;
+  const n = w * h;
+
+  const [kr, kg, kb] = P.key;
+  const kcb = CB(kr, kg, kb), kcr = CR(kr, kg, kb);
+  const inner = P.tol * 0.52;
+  const outer = inner + 3 + P.soft * 0.5;
+  const ds = P.despill / 100;
+
+  let alpha = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    const dx = CB(d[o], d[o+1], d[o+2]) - kcb;
+    const dy = CR(d[o], d[o+1], d[o+2]) - kcr;
+    let a = (Math.sqrt(dx*dx + dy*dy) - inner) / (outer - inner || 1);
+    a = a < 0 ? 0 : a > 1 ? 1 : a;
+    /* 已带 alpha 的素材（抠过底的 PNG / 透明 GIF）以原 alpha 为准。
+       透明像素的 RGB 常常是 0,0,0 或残留的绿，拿键色去量它必然判成不透明，
+       结果就是本来干净的素材被糊上一层黑边。取两者较小值，两种素材都成立：
+       不透明绿幕 sa=1 时完全等价于原来的行为。 */
+    const sa = d[o+3] / 255;
+    alpha[i] = sa < 1 ? Math.min(a, sa) : a;
+  }
+
+  if (P.erode > 0) {
+    for (let k = 0; k < P.erode; k++) {
+      const out = new Float32Array(n);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x;
+          let m = alpha[i];
+          if (x > 0 && alpha[i-1] < m) m = alpha[i-1];
+          if (x < w-1 && alpha[i+1] < m) m = alpha[i+1];
+          if (y > 0 && alpha[i-w] < m) m = alpha[i-w];
+          if (y < h-1 && alpha[i+w] < m) m = alpha[i+w];
+          out[i] = m;
+        }
+      }
+      alpha = out;
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    const a = alpha[i];
+    d[o+3] = Math.round(a * 255);
+    if (a < 0.995 && ds > 0) {
+      const g = d[o+1], lim = (d[o] + d[o+2]) * 0.5;
+      if (g > lim) d[o+1] = Math.round(g - (g - lim) * ds);
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+  return { canvas: cv, w, h, bbox: bboxOf(d, w, h) };
+}
+
+function bboxOf(data, w, h) {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    for (let x = 0; x < w; x++) {
+      if (data[row + x*4 + 3] > 16) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return { x:0, y:0, w:1, h:1, empty:true };
+  return { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1 };
+}
+function bboxOfCanvas(cv) {
+  const w = cv.width, h = cv.height;
+  const d = cv.getContext('2d', { willReadFrequently:true }).getImageData(0, 0, w, h).data;
+  return bboxOf(d, w, h);
+}
+
+/* 脚线：从下往上找「第一行足够宽的横向连续段」。
+   ------------------------------------------------------------------
+   直接取最低的不透明像素会被剑尖带走：侧视时剑斜指下方，剑尖常常比靴底还低，
+   逐帧贴它等于贴着剑在飘（实测脚线散布 20 屏幕像素）。
+   靴子横截面宽（十几个像素），剑尖只有一两个像素，所以按连段长度筛：
+   第一行的最长连续不透明段 ≥ 包围盒宽的 7%（且至少 3px）才算踩到地。
+   搜索范围仍然收在包围盒中间 60% 宽度内，避开左右伸出去的披风和剑身。 */
+function feetOfCanvas(cv, bb) {
+  const w = cv.width, h = cv.height;
+  const d = cv.getContext('2d', { willReadFrequently:true }).getImageData(0, 0, w, h).data;
+  const x0 = Math.max(0, Math.floor(bb.x + bb.w * 0.20));
+  const x1 = Math.min(w - 1, Math.ceil(bb.x + bb.w * 0.80));
+  const need = Math.max(3, Math.round(bb.w * 0.07));
+  for (let y = h - 1; y >= 0; y--) {
+    let run = 0, best = 0;
+    for (let x = x0; x <= x1; x++) {
+      if (d[(y * w + x) * 4 + 3] > 24) { run++; if (run > best) best = run; }
+      else run = 0;
+    }
+    if (best >= need) return y + 1;
+  }
+  return bb.y + bb.h;
+}
+
+/* 方向基准身高：包围盒高中位数。最大值会被挥剑那帧带偏。 */
+function refOf(keyed) {
+  const hs = keyed.map(k => k.bbox.h).filter(h => h > 0).sort((a, b) => a - b);
+  if (!hs.length) return 1;
+  return hs[hs.length >> 1];
+}
+
+/* ===================== 像素网格 ===================== */
+function edgeProfiles(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const d = canvas.getContext('2d', { willReadFrequently:true }).getImageData(0, 0, w, h).data;
+  const col = new Float64Array(w), row = new Float64Array(h);
+  for (let x = 1; x < w; x++) {
+    let e = 0;
+    for (let y = 0; y < h; y++) {
+      const o = (y*w + x)*4, q = o - 4;
+      if (d[o+3] < 20 && d[q+3] < 20) continue;
+      e += Math.abs(d[o]-d[q]) + Math.abs(d[o+1]-d[q+1]) + Math.abs(d[o+2]-d[q+2]);
+    }
+    col[x] = e;
+  }
+  for (let y = 1; y < h; y++) {
+    let e = 0;
+    for (let x = 0; x < w; x++) {
+      const o = (y*w + x)*4, q = o - w*4;
+      if (d[o+3] < 20 && d[q+3] < 20) continue;
+      e += Math.abs(d[o]-d[q]) + Math.abs(d[o+1]-d[q+1]) + Math.abs(d[o+2]-d[q+2]);
+    }
+    row[y] = e;
+  }
+  return { col, row };
+}
+function bestPhase(profile, n, p) {
+  let tot = 0;
+  for (let i = 0; i < n; i++) tot += profile[i];
+  if (tot <= 0) return { phase: 0, ratio: 0 };
+  const avg = tot / n;
+  let bp = 0, bs = -1;
+  for (let ph = 0; ph < p; ph++) {
+    let s = 0, c = 0;
+    for (let i = ph + p; i < n; i += p) { s += profile[i]; c++; }
+    if (!c) continue;
+    const m = s / c;
+    if (m > bs) { bs = m; bp = (ph + p) % p; }
+  }
+  return { phase: bp, ratio: bs / avg };
+}
+function detectGrid(canvas, forceF) {
+  const w = canvas.width, h = canvas.height;
+  const { col, row } = edgeProfiles(canvas);
+  const cx = bestPhase(col, w, forceF), cy = bestPhase(row, h, forceF);
+  return { f: forceF, px: cx.phase, py: cy.phase, ratio: Math.min(cx.ratio, cy.ratio) };
+}
+
+function boxDown(canvas, f, px, py) {
+  px = px || 0; py = py || 0;
+  const sw = canvas.width, sh = canvas.height;
+  const dw = Math.max(1, Math.floor((sw - px) / f)), dh = Math.max(1, Math.floor((sh - py) / f));
+  const src = canvas.getContext('2d', { willReadFrequently:true }).getImageData(0, 0, sw, sh).data;
+  const out = new ImageData(dw, dh);
+  const od = out.data, inv = 1 / (f * f);
+  for (let y = 0; y < dh; y++) {
+    for (let x = 0; x < dw; x++) {
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let j = 0; j < f; j++) {
+        const row = (py + y*f + j) * sw + px;
+        for (let i = 0; i < f; i++) {
+          const o = (row + x*f + i) * 4, al = src[o+3];
+          r += src[o] * al; g += src[o+1] * al; b += src[o+2] * al; a += al;
+        }
+      }
+      const o = (y*dw + x) * 4;
+      if (a > 0) { od[o] = r/a; od[o+1] = g/a; od[o+2] = b/a; }
+      od[o+3] = a * inv;
+    }
+  }
+  const d = document.createElement('canvas');
+  d.width = dw; d.height = dh;
+  d.getContext('2d').putImageData(out, 0, 0);
+  return { canvas: d, w: dw, h: dh };
+}
+
+function smoothDown(canvas, s) {
+  const nw = Math.max(1, Math.round(canvas.width * s));
+  const nh = Math.max(1, Math.round(canvas.height * s));
+  const cv = document.createElement('canvas');
+  cv.width = nw; cv.height = nh;
+  const g = cv.getContext('2d', { willReadFrequently:true });
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(canvas, 0, 0, nw, nh);
+  return { canvas: cv, w: nw, h: nh };
+}
+
+/* ===================== 调色板 ===================== */
+/* 全局共用一套：逐方向量化会让同一件铠甲在四个方向上变成四种颜色。 */
+function buildPalette(frames, k) {
+  const hist = new Map();
+  for (const fr of frames) {
+    const w = fr.canvas.width, h = fr.canvas.height;
+    const d = fr.canvas.getContext('2d', { willReadFrequently:true }).getImageData(0, 0, w, h).data;
+    for (let i = 0; i < w*h; i++) {
+      const o = i*4;
+      if (d[o+3] < 40) continue;
+      const key = ((d[o]>>3)<<10) | ((d[o+1]>>3)<<5) | (d[o+2]>>3);
+      let e = hist.get(key);
+      if (e) { e.n++; e.r += d[o]; e.g += d[o+1]; e.b += d[o+2]; }
+      else hist.set(key, { n:1, r:d[o], g:d[o+1], b:d[o+2] });
+    }
+  }
+  const bins = [...hist.values()].sort((x, y) => y.n - x.n);
+  if (bins.length <= k) return null;
+
+  const pal = bins.slice(0, k).map(e => [e.r/e.n, e.g/e.n, e.b/e.n]);
+  for (let it = 0; it < 3; it++) {
+    const sum = pal.map(() => [0, 0, 0, 0]);
+    for (const e of bins) {
+      const r = e.r/e.n, g = e.g/e.n, b = e.b/e.n;
+      let best = 0, bd = 1e9;
+      for (let c = 0; c < pal.length; c++) {
+        const dr = r-pal[c][0], dg = g-pal[c][1], db = b-pal[c][2];
+        const t = dr*dr + dg*dg + db*db;
+        if (t < bd) { bd = t; best = c; }
+      }
+      sum[best][0] += r*e.n; sum[best][1] += g*e.n; sum[best][2] += b*e.n; sum[best][3] += e.n;
+    }
+    for (let c = 0; c < pal.length; c++) {
+      if (sum[c][3]) pal[c] = [sum[c][0]/sum[c][3], sum[c][1]/sum[c][3], sum[c][2]/sum[c][3]];
+    }
+  }
+  return pal;
+}
+function applyPalette(canvas, pal) {
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently:true });
+  const id = ctx.getImageData(0, 0, w, h), d = id.data;
+  const cache = new Map();
+  for (let i = 0; i < w*h; i++) {
+    const o = i*4;
+    if (d[o+3] < 40) continue;
+    const key = (d[o]<<16) | (d[o+1]<<8) | d[o+2];
+    let c = cache.get(key);
+    if (c === undefined) {
+      let best = 0, bd = 1e9;
+      for (let j = 0; j < pal.length; j++) {
+        const dr = d[o]-pal[j][0], dg = d[o+1]-pal[j][1], db = d[o+2]-pal[j][2];
+        const t = dr*dr + dg*dg + db*db;
+        if (t < bd) { bd = t; best = j; }
+      }
+      c = best; cache.set(key, c);
+    }
+    d[o] = Math.round(pal[c][0]); d[o+1] = Math.round(pal[c][1]); d[o+2] = Math.round(pal[c][2]);
+  }
+  ctx.putImageData(id, 0, 0);
+}
+
+/* ===================== 锚点 / 合成 ===================== */
+/* 逐帧包围盒对齐会抖：剑一挥包围盒变宽，人被推着走。
+   默认方向级常数锚点 = 各帧底部中心的中位数；footy 模式再把 Y 换成逐帧脚线，
+   把 AI 视频里「整个人浮上去」的位移压掉。 */
+function anchorsOf(t, mode) {
+  const bs = t.scaled.map(f => f.bbox);
+  if (!bs.length) return [];
+  if (mode === 'none') return bs.map(b => ({ ax: b.x, ay: b.y }));
+  if (mode === 'center') return bs.map(b => ({ ax: b.x + b.w / 2, ay: b.y + b.h / 2 }));
+  if (mode === 'frame') return bs.map(b => ({ ax: b.x + b.w / 2, ay: b.y + b.h }));
+  const cx = bs.map(b => b.x + b.w / 2).sort((a, b) => a - b);
+  const by = bs.map(b => b.y + b.h).sort((a, b) => a - b);
+  const mx = cx[cx.length >> 1], my = by[by.length >> 1];
+  if (mode === 'footy') {
+    // X 用方向级常数（消横向抖），Y 用逐帧脚线（消上下浮）。
+    // 但脚线偶尔会落在剑的护手/披风下摆上（那一行也够宽），逐帧硬贴会被它拽走。
+    // 所以把修正量夹在「方向级中位脚线 ±2.5% 身高」之内：真正需要修的浮起量只有
+    // 2~3 个像素，超过这个量的基本都是被剑或披风带偏的离群值，直接当中位数处理。
+    //
+    // 注意：这个模式会把「落地时身体下沉」的起伏一并压平 —— 而上下起伏正是走路
+    // 区别于「站着晃」的核心特征，也是步态相位估计所依赖的信号。所以它不适合
+    // 做走路循环的默认值，只在角色整体飘起来（脚底离开同一条线 > 5%）时才用。
+    const fs = t.scaled.map(f => f.feet || (f.bbox.y + f.bbox.h));
+    const sorted = [...fs].sort((a, b) => a - b);
+    const med = sorted[sorted.length >> 1];
+    const hh = t.scaled.map(f => f.bbox.h).sort((a, b) => a - b);
+    const lim = Math.max(2, Math.round((hh[hh.length >> 1] || 96) * 0.025));
+    return t.scaled.map((f, i) => ({
+      ax: mx,
+      ay: med + Math.max(-lim, Math.min(lim, fs[i] - med)),
+    }));
+  }
+  return bs.map(() => ({ ax: mx, ay: my }));
+}
+
+function composeTrack(scaled, anchors, tx, ty, CW, CH, pad) {
+  const ox = Math.round(P.offX), oy = Math.round(P.offY);
+  return scaled.map((fr, i) => {
+    const a = anchors[i] || { ax: fr.bbox.x, ay: fr.bbox.y };
+    const dx = Math.round(tx - a.ax) + pad + ox;
+    const dy = Math.round(ty - a.ay) + pad + oy;
+    const c = document.createElement('canvas');
+    c.width = CW + pad * 2; c.height = CH + pad * 2;
+    const g = c.getContext('2d', { willReadFrequently:true });
+    g.imageSmoothingEnabled = false;
+    g.drawImage(fr.canvas, dx, dy);
+    return { canvas: c, w: c.width, h: c.height };
+  });
+}
+
+/* 抠图后的画布必须复制一份再缩放：量化会就地改像素，
+   同一张画布被两次 buildAll 共用就会越量越花。 */
+function cloneCanvasOf(c0) {
+  const c = document.createElement('canvas');
+  c.width = c0.width; c.height = c0.height;
+  c.getContext('2d', { willReadFrequently:true }).drawImage(c0, 0, 0);
+  return { canvas: c, w: c.width, h: c.height };
+}
+
+/* ===================== 步态分析 =====================
+   走路时头顶最低 = 落地（接触），最高 = 通过。用「头顶 y」做信号：
+   它不受手臂、剑、披风影响，比包围盒宽度稳得多。
+   周期用自相关估；bob 一个周期 = 半步，所以乘 2 才是整步。 */
+function analyzeGait(t) {
+  const bs = t.scaled.map(f => f.bbox);
+  if (bs.length < 6) return { top:[], period:0, contact:0, passing:0, stride:0 };
+
+  const raw = bs.map(b => b.y);            // 越小 = 头越高 = 身体越高
+  const n = raw.length;
+
+  // 3 点平滑：像素噪声会让峰值抖动，先压一下高频
+  const top = raw.map((v, i) => (raw[Math.max(0, i-1)] + v + raw[Math.min(n-1, i+1)]) / 3);
+
+  /* ---- 周期估计 ----
+     两种方法都试，优先峰距。
+     - 自相关在「一个低频趋势 + 弱周期」的短序列上很容易被趋势带偏，
+       实测前视和背视的周期被估成 36 和 24（真实约 36 和 22，勉强对），
+       但只要曲线里有一段单边漂移，它就会锁到错误的 lag 上。
+     - 峰距（相邻两个「身体最高点」间隔的中位数）只看局部极值，对趋势不敏感。
+       走路一个整步里有两次腾空、两次落地，所以「身体最高点」每步出现两次，
+       相邻峰距 × 2 就是一个整步。
+     峰不足 2 个时退回自相关。 */
+  const extremes = (arr, wantMax) => {
+    const idx = [];
+    let i = 0;
+    while (i < n) {
+      let j = i;
+      while (j + 1 < n && Math.abs(arr[j+1] - arr[i]) < 1e-9) j++;
+      const v = arr[i];
+      const l = i > 0 ? arr[i-1] : (wantMax ? -1e9 : 1e9);
+      const r = j + 1 < n ? arr[j+1] : (wantMax ? -1e9 : 1e9);
+      const isPeak = wantMax ? (v >= l && v >= r) : (v <= l && v <= r);
+      if (isPeak) idx.push((i + j) >> 1);
+      i = j + 1;
+    }
+    return idx;
+  };
+
+  // 身体最高点 = y 最小 → 对 -top 找极大
+  let peaksAt = extremes(top.map(v => -v), true);
+  if (peaksAt.length < 2) peaksAt = extremes(top, true);
+
+  let stride = 0, period = 0;
+  if (peaksAt.length >= 2) {
+    const gaps = [];
+    for (let k = 1; k < peaksAt.length; k++) gaps.push(peaksAt[k] - peaksAt[k-1]);
+    gaps.sort((a, b) => a - b);
+    const med = gaps[gaps.length >> 1];
+    period = Math.max(1, Math.round(med));
+    stride = period * 2;
+  }
+
+  // 峰太少 → 退回自相关
+  if (!stride) {
+    const mean = top.reduce((a, b) => a + b, 0) / n;
+    const x = top.map(v => v - mean);
+    const r0 = x.reduce((a, v) => a + v*v, 0) / n;
+    if (r0 > 0.01) {
+      const rs = [];
+      for (let lag = 3; lag <= Math.floor(n / 2); lag++) {
+        let s = 0, c = 0;
+        for (let i2 = 0; i2 + lag < n; i2++) { s += x[i2] * x[i2 + lag]; c++; }
+        if (!c) continue;
+        rs.push([lag, (s / c) / r0]);
+      }
+      let bestLag = 0, bestR = -2;
+      for (const [lag, r] of rs) if (r > bestR) { bestR = r; bestLag = lag; }
+      if (bestR > 0 && bestR >= 0.15) {
+        for (const [lag, r] of rs) if (r >= bestR * 0.78 && lag > bestLag) bestLag = lag;
+        period = bestLag;
+        stride = bestLag * 2;
+      }
+    }
+  }
+
+  // 步长不能超过整段的两倍，也不能小到没有意义
+  if (stride && (stride > n * 2 || stride < 4)) { stride = 0; period = 0; }
+
+  /* ---- 接触帧：身体最低（top 最大）----
+     落地瞬间身体下沉，这是四个方向唯一共享的物理事件，用它当相位零点。 */
+  let contact = 0;
+  for (let i = 1; i < n; i++) if (top[i] > top[contact]) contact = i;
+  let passing = 0;
+  for (let i = 1; i < n; i++) if (top[i] < top[passing]) passing = i;
+
+  return {
+    top, period, contact, passing, n, stride,
+    peaks: peaksAt,
+    periodR: 0,
+    manual: false,
+  };
+}
+
+/* 某方向「一个整步」跨多少候选帧。
+   自动估计（峰距/自相关）在短视频上不可能永远对，所以允许手动填「这段素材走了几步」：
+   填了就用 pool / steps，那是可验证的量（眼睛数一下落地几次），比信号处理可靠。 */
+function effStride(t) {
+  const pool = (t.frames && t.frames.length) || 1;
+  const ov = P.steps && P.steps[t.id];
+  if (ov > 0) return Math.max(2, Math.min(pool * 2, Math.round(pool / ov)));
+  const g = t.gait || {};
+  return g.stride > 0 ? g.stride : pool;
+}
+
+/* ===================== 主流水线 ===================== */
+async function buildAll(opts) {
+  opts = opts || {};
+  const token = ++rebuildToken;
+
+  /* ---- 0. 镜像：右向直接由左向翻转 ---- */
+  if (P.mirrorRight) {
+    const L = tOf('left'), R = tOf('right');
+    if (L && L.raw.length) {
+      const sig = `${L.sampleRev}:${L.raw.length}:${(L.extras || []).length}`;
+      if (R.mirrorSig !== sig) {
+        R.raw = L.raw.map(flipBitmap);
+        R.extras = (L.extras || []).map(flipBitmap);   // 附加帧跟着一起翻
+        R.times = L.times.slice();
+        R.cand = R.raw.length;
+        R.images = R.raw; R.video = null; R.duration = L.duration;
+        R.vw = L.vw; R.vh = L.vh;
+        R.mirrorSig = sig; R.frozen = true; R.dirty = false;
+        R.keySig = null; R.keyed = []; R.frames = [];
+      }
+    }
+  }
+
+  const src = withSrc();
+  if (!src.length) {
+    Object.assign(G, { cellW:0, cellH:0, outW:0, outH:0, palN:0 });
+    building = false; renderAll(); return;
+  }
+
+  building = true;
+  document.body.style.cursor = 'progress';
+  const hud = $('#hudMode');
+
+  try {
+    /* ---- 1. 采样（镜像方向跳过） ---- */
+    for (const t of src) {
+      if (token !== rebuildToken) return;
+      if (t.frozen) { t.dirty = false; continue; }
+      if (opts.resample || t.dirty || !t.raw.length) {
+        hud.textContent = `抽帧 ${t.label}…`;
+        await yieldFrame();
+        await sampleTrack(t);
+        t.keyed = [];
+        t.dirty = false;
+      }
+    }
+
+    /* ---- 2. 抠图（同一套键色与参数） ---- */
+    const sig = [P.key.join('_'), P.tol, P.soft, P.despill, P.erode].join('|');
+    for (const t of src) {
+      if (token !== rebuildToken) return;
+      if (!t.keyed.length || t.keySig !== sig || t.keyed.length !== t.raw.length) {
+        hud.textContent = `抠图 ${t.label}…`;
+        await yieldFrame();
+        t.keyed = [];
+        for (const bmp of t.raw) t.keyed.push(keyBitmap(bmp));
+        t.keySig = sig;
+      }
+    }
+
+    /* ---- 3. 缩放基准 ---- */
+    const mode = P.pxMode;
+    const targetH = mode[0] === 'h' ? (parseInt(mode.slice(1), 10) || 96) : 96;
+    let f = 0, px = 0, py = 0;
+    const sMap = new Map();
+
+    if (mode === 'off') {
+      for (const t of src) sMap.set(t.id, 1);
+    } else if (mode[0] === 'b') {
+      const g = detectGrid(src[0].keyed[0].canvas, parseInt(mode.slice(1), 10));
+      if (g.f >= 2) { f = g.f; px = g.px; py = g.py; }
+      for (const t of src) sMap.set(t.id, f >= 2 ? 1 / f : targetH / refOf(t.keyed));
+    } else if (P.norm === 'each') {
+      for (const t of src) sMap.set(t.id, targetH / refOf(t.keyed));
+    } else {
+      let refH = 1;
+      for (const t of src) for (const k of t.keyed) if (k.bbox.h > refH) refH = k.bbox.h;
+      const s = targetH / refH;
+      for (const t of src) sMap.set(t.id, s);
+    }
+    const sVals = [...sMap.values()];
+    G.sMax = Math.max(...sVals); G.s = G.sMax;
+    G.sMin = Math.min(...sVals);
+    G.f = f; G.px = px; G.py = py;
+
+    /* ---- 4. 缩放（每帧新画布：量化会就地改像素） ---- */
+    const allScaled = [];
+    for (const t of src) {
+      const st = sMap.get(t.id);
+      t.scale = st;
+      t.scaled = t.keyed.map(k => {
+        let r;
+        if (f >= 2) r = boxDown(k.canvas, f, px, py);
+        else if (Math.abs(st - 1) < 1e-6) r = cloneCanvasOf(k.canvas);
+        else r = smoothDown(k.canvas, st);
+        const bb = bboxOfCanvas(r.canvas);
+        return { canvas: r.canvas, w: r.w, h: r.h, bbox: bb, feet: feetOfCanvas(r.canvas, bb) };
+      });
+      allScaled.push(...t.scaled);
+    }
+    if (token !== rebuildToken) return;
+    hud.textContent = '量化调色板…';
+    await yieldFrame();
+
+    /* ---- 5. 共用调色板 ---- */
+    G.palN = 0;
+    G.pal = null;
+    if (P.palette > 0) {
+      const pal = buildPalette(allScaled, P.palette | 0);
+      if (pal) {
+        for (const fr of allScaled) applyPalette(fr.canvas, pal);
+        for (const t of src) for (const fr of t.scaled) {
+          fr.bbox = bboxOfCanvas(fr.canvas);
+          fr.feet = feetOfCanvas(fr.canvas, fr.bbox);
+        }
+        G.palN = pal.length;
+        G.pal = pal;                      // 追加的 PNG 也用同一个调色板，否则颜色会跳
+      }
+    }
+
+    /* ---- 6. 全局单元格 ---- */
+    const anchors = new Map();
+    for (const t of src) anchors.set(t.id, anchorsOf(t, P.align));
+
+    let needW = 1, maxTp = 1, maxBt = 0;
+    for (const t of src) {
+      const as = anchors.get(t.id);
+      let l = 0, r = 0, tp = 0, bt = 0;
+      t.scaled.forEach((fr, i) => {
+        const b = fr.bbox, a = as[i] || { ax: b.x, ay: b.y };
+        if (a.ax - b.x > l) l = a.ax - b.x;
+        if (b.x + b.w - a.ax > r) r = b.x + b.w - a.ax;
+        if (a.ay - b.y > tp) tp = a.ay - b.y;
+        if (b.y + b.h - a.ay > bt) bt = b.y + b.h - a.ay;
+      });
+      t.need = { l, r, tp, bt };
+      if (l + r > needW) needW = l + r;
+      if (tp > maxTp) maxTp = tp;
+      if (bt > maxBt) maxBt = bt;
+    }
+    const CW = Math.max(1, Math.round(needW));
+    const CH = Math.max(1, Math.round(maxTp + maxBt));
+    const pad = Math.max(0, Math.round(P.pad));
+    Object.assign(G, { cellW:CW, cellH:CH, pad, outW:CW + pad*2, outH:CH + pad*2 });
+
+    /* ---- 7. 合成 ---- */
+    for (const t of src) {
+      const nd = t.need;
+      const tx = P.align === 'none' ? 0 : (CW - (nd.l + nd.r)) / 2 + nd.l;
+      const ty = P.align === 'none' ? 0
+        : P.align === 'center' ? (CH - (nd.tp + nd.bt)) / 2 + nd.tp
+        : CH - maxBt;
+      t.tx = tx; t.ty = ty;             // 追加帧要用同一套定位，否则会歪一格
+      t.frames = composeTrack(t.scaled, anchors.get(t.id), tx, ty, CW, CH, pad);
+      const hs = t.scaled.map(fr => fr.bbox.h), ws = t.scaled.map(fr => fr.bbox.w);
+      t.stat = { hMin: Math.min(...hs), hMax: Math.max(...hs), wMin: Math.min(...ws), wMax: Math.max(...ws) };
+      t.gait = analyzeGait(t);
+    }
+
+    /* ---- 7b. 手工追加的 PNG ----
+       走和采样帧完全一样的抠图 / 缩放 / 调色板 / 锚点 / 定位，但排在候选池末尾，
+       且不参与 analyzeGait：它们来自另一版渲染或手改，相位是未知的，混进等间隔
+       序列会把整步长度和接触帧算歪（那会让四方向的时间轴一起错）。 */
+    for (const t of src) {
+      t.nExtra = 0;
+      if (!t.extras || !t.extras.length) continue;
+      hud.textContent = `附加帧 ${t.label}…`;
+      await yieldFrame();
+      const sc = [];
+      for (const bmp of t.extras) {
+        const k = keyBitmap(bmp);
+        let r;
+        if (G.f >= 2) r = boxDown(k.canvas, G.f, G.px, G.py);
+        else if (Math.abs((t.scale || 1) - 1) < 1e-6) r = cloneCanvasOf(k.canvas);
+        else r = smoothDown(k.canvas, t.scale || 1);
+        let bb = bboxOfCanvas(r.canvas);
+        const fr = { canvas: r.canvas, w: r.w, h: r.h, bbox: bb, feet: feetOfCanvas(r.canvas, bb) };
+        if (G.pal) {
+          applyPalette(fr.canvas, G.pal);
+          fr.bbox = bboxOfCanvas(fr.canvas);
+          fr.feet = feetOfCanvas(fr.canvas, fr.bbox);
+        }
+        sc.push(fr);
+      }
+      if (!sc.length) continue;
+      const exAnchors = anchorsOf({ scaled: sc }, P.align);
+      const exFrames = composeTrack(sc, exAnchors, t.tx, t.ty, G.cellW, G.cellH, G.pad);
+      t.frames = t.frames.concat(exFrames);
+      t.nExtra = exFrames.length;
+    }
+
+    /* ---- 8. 时间轴校正 ---- */
+    normalizeSeq(opts.resetSeq);
+    // 首次载入的配速已经在 normalizeSeq 里完成（按整步均匀铺开），
+    // 这里不要再跑 applyAlign —— 那会对着已经取整过的索引二次取整，
+    // 每过一轮就漂一点。
+    document.title = `slots=${tLen()} cell=${G.outW}x${G.outH} pal=${G.palN}`;
+  } catch (e) {
+    console.error(e);
+    document.title = 'BUILD ERR: ' + e.message;
+    toast('构建失败: ' + e.message, true);
+  } finally {
+    building = false;
+    document.body.style.cursor = '';
+    renderAll();
+  }
+}
+
+/* 把某方向的时间轴铺成一个完整整步的 n 格。
+   步长和候选池往往不是一个量级（实测侧视整步 ~34 帧、池子 56 帧，前视整步
+   ~24 帧），按候选序号 0,1,2… 递增只能覆盖到半步，四个方向覆盖的比例还各不
+   相同 —— 播起来就是「有人走完一步有人只走了半步」。所以一律按归一化时刻
+   u = k/n 取样，每个方向都恰好覆盖自己的一整个步。 */
+function fillRow(t, n) {
+  const out = [];
+  const g = t.gait || {};
+  for (let k = 0; k < n; k++) {
+    out.push(wrapIdx(Math.round((g.contact || 0) + (k / n) * effStride(t)), t.frames.length));
+  }
+  seqs[t.id] = out;
+}
+
+/* 让四行时间轴与候选数量对齐：全空时自动铺满，否则夹紧越界索引。 */
+function normalizeSeq(reset) {
+  const ls = live();
+  if (!ls.length) { for (const d of DIRS) seqs[d.id] = []; seqSel = 0; return; }
+  if (reset || !tLen()) {
+    const n = Math.max(2, P.count | 0);
+    for (const t of ls) fillRow(t, Math.min(n, Math.max(2, t.frames.length)));
+    seqSel = 0;
+    return;
+  }
+  for (const t of ls) {
+    const a = arrOf(t.id);
+    for (let i = 0; i < a.length; i++) a[i] = wrapIdx(a[i] | 0, t.frames.length);
+  }
+  if (seqSel >= tLen()) seqSel = Math.max(0, tLen() - 1);
+}
+
+/* 「依次填满」：联动时四行一起按整步重铺，否则只重铺当前方向 */
+function fillSeq() {
+  const ls = live();
+  if (!ls.length) return;
+  const targets = P.link ? ls : [tr()].filter(t => t.frames.length);
+  if (!targets.length) return;
+  for (const t of targets) fillRow(t, Math.min(Math.max(2, P.count | 0), Math.max(2, t.frames.length)));
+  seqSel = 0; playIdx = 0;
+  renderTimeline(); renderCandidates(); drawPreview(); renderConsistency(); renderGait();
+}
+
+/* ===================== 渲染：预览 ===================== */
+function drawChecker(ctx, w, h, size) {
+  size = size || 8;
+  for (let y = 0; y < h; y += size) {
+    for (let x = 0; x < w; x += size) {
+      ctx.fillStyle = ((x/size + y/size) % 2 === 0) ? '#1a1f27' : '#151a21';
+      ctx.fillRect(x, y, size, size);
+    }
+  }
+}
+
+/* 预览底板。棋盘用来判断「透明」；纯色用来判断实际的游戏内观感
+   （深色 UI 里看着正常的描边，换到白底会整圈发黑，反之亦然）。
+   洋红是像素美术的老办法：边缘一旦留了半透明杂边，在洋红上会立刻显出紫圈。 */
+const BGS = [
+  { id:'dcheck', label:'深棋盘', a:'#1a1f27', b:'#151a21', panel:'#0d1014', dark:true },
+  { id:'lcheck', label:'浅棋盘', a:'#e8ebf0', b:'#ccd3dd', panel:'#d9dee7', dark:false },
+  { id:'black',  label:'纯黑',   solid:'#000000', panel:'#000000', dark:true },
+  { id:'white',  label:'纯白',   solid:'#ffffff', panel:'#ffffff', dark:false },
+  { id:'gray',   label:'中性灰', solid:'#808080', panel:'#808080', dark:true },
+  { id:'magenta',label:'洋红',   solid:'#ff00ff', panel:'#ff00ff', dark:true },
+];
+const bgStyle = id => BGS.find(b => b.id === id) || BGS[0];
+
+function drawBackdrop(ctx, w, h, size) {
+  const s = bgStyle(P.bg);
+  if (s.solid) { ctx.fillStyle = s.solid; ctx.fillRect(0, 0, w, h); return; }
+  size = size || 8;
+  for (let y = 0; y < h; y += size) {
+    for (let x = 0; x < w; x += size) {
+      ctx.fillStyle = ((x/size + y/size) % 2 === 0) ? s.a : s.b;
+      ctx.fillRect(x, y, size, size);
+    }
+  }
+}
+
+function previewPlan() {
+  if (picking) return { list: [tr()], cols:1, rows:1 };
+  const list = live();
+  if (!list.length) return { list: [], cols:1, rows:1 };
+  /* 默认只画「当前方向」一个。四个方向并排是「对比」用的，不该是默认视图：
+     默认四开的时候，改一个方向看到的是四张图，很容易以为「四个方向总是一起动」。 */
+  if (P.cmpMode === 'focus') return { list: [tr()], cols:1, rows:1 };
+  const n = list.length;
+  if (P.cmpMode === '1x4' && n > 1) return { list, cols: n, rows: 1 };
+  return { list, cols: n <= 1 ? 1 : 2, rows: n <= 2 ? 1 : 2 };
+}
+
+function ensurePreviewDom(plan) {
+  const wrap = $('#pwrap');
+  wrap.style.gridTemplateColumns = `repeat(${plan.cols}, auto)`;
+  wrap.style.gridTemplateRows = `repeat(${plan.rows}, auto)`;
+  const key = (picking ? 'raw:' : '') + plan.list.map(t => t.id).join(',') + `|${plan.cols}x${plan.rows}`;
+  if (wrap.dataset.key === key) return;
+  wrap.dataset.key = key;
+  wrap.innerHTML = '';
+  if (!plan.list.length) {
+    const d = document.createElement('div');
+    d.className = 'pv';
+    d.style.width = '360px'; d.style.height = '220px';
+    d.innerHTML = '<span class="msg">拖入 1–4 个绿幕视频<br>或点「载入帧序列」<br><span style="font-size:10px;color:#4a5361">用 ?frames=路径 指定素材目录</span></span>';
+    wrap.appendChild(d);
+    return;
+  }
+  for (const t of plan.list) {
+    const d = document.createElement('div');
+    d.className = 'pv';
+    d.dataset.dir = t.id;
+    const c = document.createElement('canvas');
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    const msg = document.createElement('span');
+    msg.className = 'msg';
+    d.appendChild(c); d.appendChild(tag); d.appendChild(msg);
+    wrap.appendChild(d);
+  }
+}
+
+function drawPreview() {
+  const plan = previewPlan();
+  ensurePreviewDom(plan);
+  const wrap = $('#pwrap');
+  if (!plan.list.length) {
+    $('#hudFrame').textContent = '—';
+    $('#hudCell').textContent = '—';
+    $('#hudPal').textContent = '—';
+    $('#hudMode').textContent = '待载入';
+    return;
+  }
+
+  const gap = 10, padX = 24, padY = 18;
+  const boxW = Math.max(60, (wrap.clientWidth - padX - gap * (plan.cols - 1)) / plan.cols);
+  const boxH = Math.max(60, (wrap.clientHeight - padY - gap * (plan.rows - 1)) / plan.rows);
+  const total = tLen();
+  const cur = Math.max(0, playIdx);
+
+  /* 对比模式：四个面板统一用同一个缩放。各算各的话，小的那方向会被放大填满
+     格子，高矮差、步幅差全被显示尺寸抹平，正好抹掉了要比的东西。 */
+  let zCmp = Infinity;
+  if (!picking) {
+    for (const t of plan.list) {
+      const f = frameAtSlot(t, cur);
+      if (f && f.w) zCmp = Math.min(zCmp, boxW / f.w, boxH / f.h);
+    }
+    if (!isFinite(zCmp) || zCmp <= 0) zCmp = 1;
+  }
+
+  for (const t of plan.list) {
+    const cellEl = wrap.querySelector(`.pv[data-dir="${t.id}"]`);
+    if (!cellEl) continue;
+    const cv = cellEl.querySelector('canvas');
+    const tag = cellEl.querySelector('.tag');
+    const msg = cellEl.querySelector('.msg');
+    const ctx = cv.getContext('2d');
+
+    if (picking) {
+      const raw = t.raw[Math.min(playIdx, t.raw.length - 1)];
+      if (!raw) { msg.textContent = '无原帧'; continue; }
+      cv.width = raw.width; cv.height = raw.height;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(raw, 0, 0);
+      tag.textContent = '吸管 · 点击取色';
+      msg.textContent = '';
+      const z = Math.min(boxW / cv.width, boxH / cv.height);
+      cv.style.width = Math.round(cv.width * z) + 'px';
+      cv.style.height = Math.round(cv.height * z) + 'px';
+      cellEl.style.width = cv.style.width; cellEl.style.height = cv.style.height;
+      continue;
+    }
+
+    const f = frameAtSlot(t, cur);
+    if (!f) {
+      cv.width = G.outW || 96; cv.height = G.outH || 96;
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      drawBackdrop(ctx, cv.width, cv.height);
+      tag.textContent = `${t.label} · 空`;
+      msg.textContent = lenOf(t.id) ? '槽超出该方向长度' : '这一行还没有帧';
+      const z = Math.min(boxW / cv.width, boxH / cv.height, 6);
+      cv.style.width = Math.round(cv.width*z) + 'px';
+      cv.style.height = Math.round(cv.height*z) + 'px';
+      cellEl.style.width = cv.style.width; cellEl.style.height = cv.style.height;
+      continue;
+    }
+
+    cv.width = f.w; cv.height = f.h;
+    ctx.clearRect(0, 0, f.w, f.h);
+    drawBackdrop(ctx, f.w, f.h);
+    cellEl.style.background = bgStyle(P.bg).panel;
+
+    if (P.onion && !playing && lenOf(t.id) > 1) {
+      const pf = frameAtSlot(t, cur - 1);
+      if (pf) { ctx.globalAlpha = 0.3; ctx.imageSmoothingEnabled = false; ctx.drawImage(pf.canvas, 0, 0); ctx.globalAlpha = 1; }
+    }
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(f.canvas, 0, 0);
+
+    const zRaw = Math.min(boxW / f.w, boxH / f.h, zCmp);
+    // 只有放大到 2× 以上才取整（像素风要整数倍才不糊）。1~2× 之间取整会只剩 1×，
+    // 白白浪费一半显示面积，所以这一档用分数缩放。
+    const z = zRaw >= 2 ? Math.floor(zRaw) : zRaw;
+
+    if (P.guides) {
+      /* 浅底上原来的半透明蓝/橙几乎看不见，换一组深一档的色 */
+      const light = !bgStyle(P.bg).dark;
+      ctx.save();
+      const lw = 1 / z;
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = light ? 'rgba(30,86,180,.7)' : 'rgba(110,168,254,.45)';
+      ctx.beginPath();
+      ctx.moveTo(Math.round(f.w/2) + lw/2, 0); ctx.lineTo(Math.round(f.w/2) + lw/2, f.h);
+      ctx.stroke();
+      ctx.strokeStyle = light ? 'rgba(176,96,16,.8)' : 'rgba(240,180,106,.55)';
+      ctx.beginPath();
+      ctx.moveTo(0, f.h - lw/2); ctx.lineTo(f.w, f.h - lw/2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    cv.style.width = Math.round(f.w * z) + 'px';
+    cv.style.height = Math.round(f.h * z) + 'px';
+    cellEl.style.width = cv.style.width; cellEl.style.height = cv.style.height;
+    const k = candAt(t.id, cur);
+    const isCur = t.id === tr().id;
+    const nSl = lenOf(t.id);
+    /* 四方向同屏时每格只有一两百像素宽，长标签会被挤成两行盖在头脸上，
+       所以多格视图只留「方向 + 槽位」，候选号在 focus 视图里才显示。 */
+    tag.textContent = plan.list.length > 1
+      ? `${isCur ? '▸ ' : ''}${t.label} ${wrapIdx(cur, nSl) + 1}/${nSl}`
+      : `${isCur ? '▸ ' : ''}${t.label} · 槽 ${wrapIdx(cur, nSl) + 1}/${nSl} · 候选 ${k === null ? '—' : k + 1}`;
+    tag.title = `槽 ${wrapIdx(cur, nSl) + 1}/${nSl} · 候选 ${k === null ? '—' : k + 1}`;
+    tag.style.color = isCur ? 'var(--acc)' : '#8a93a5';
+    tag.style.borderColor = isCur ? 'rgba(95,211,154,.45)' : '#232a35';
+    msg.textContent = '';
+  }
+
+  const hd = $('#hudDir');
+  if (hd) hd.textContent = `编辑 ${tr().label}向`;
+  $('#hudFrame').textContent = total
+    ? `槽 ${wrapIdx(cur, total) + 1}/${total} · 各行 ${live().map(t => lenOf(t.id)).join('/')}`
+    : '槽 —';
+  $('#hudCell').textContent = G.outW ? `单元格 ${G.outW}×${G.outH}` : '单元格 —';
+  $('#hudPal').textContent = G.palN ? `${G.palN} 色` : (P.palette ? '调色板 —' : '全彩');
+  const sTxt = G.sMin === undefined ? '—'
+    : Math.abs(G.sMax - G.sMin) < 1e-4 ? G.s.toFixed(3) + '×'
+    : `${G.sMin.toFixed(3)}–${G.sMax.toFixed(3)}×`;
+  $('#hudMode').textContent = G.outW
+    ? `缩放 ${sTxt} · ${G.f >= 2 ? '块 ' + G.f + '×' : P.pxMode === 'off' ? '原始' : '归一化'}`
+    : '待载入';
+
+  // 播放状态：默认暂停时预览是静图，很容易被当成「没有动画预览」，所以显式标出来
+  const hp = $('#hudPlay');
+  if (hp) {
+    hp.classList.toggle('on', !!playing);
+    hp.innerHTML = playing
+      ? `<i></i>循环播放 ${P.fps}fps`
+      : `<i></i>已暂停 · 空格键播放`;
+  }
+}
+
+/* ===================== 渲染：候选池 ===================== */
+function thumbOf(f, size) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  drawChecker(g, size, size);
+  if (f) {
+    const sc = Math.min(size / f.w, size / f.h);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(f.canvas, (size - f.w*sc)/2, (size - f.h*sc)/2, f.w*sc, f.h*sc);
+  }
+  return c;
+}
+
+function renderCandidates() {
+  const grid = $('#grid');
+  const t = tr();
+  const any = live();
+  const has = t.frames.length > 0;
+
+  /* 候选池永远只显示「当前方向」的帧。以前默认四方向并排成一格（4D），
+     一屏四张小图，点哪张都不确定往哪一行加 —— 这就是「候选帧每次都是
+     四个方向一起的」的来源。现在一个方向一个池子，切方向靠上面的四个大按钮。 */
+  grid.className = 'grid g1' + (P.grid4 ? ' ref' : '');
+  grid.innerHTML = '';
+  $('#gridEmpty').style.display = has ? 'none' : 'block';
+  const nEx = t.nExtra || 0;
+  const exTxt = nEx ? ` <span class="mono" style="color:#9d8bff">(+${nEx} 附加)</span>` : '';
+  $('#focusTxt').innerHTML = has
+    ? `正在拼：<b>${t.label}向</b> <span class="mono">· 候选 ${t.frames.length}${nEx ? `（含 ${nEx} 附加）` : ''} · 已用 ${lenOf(t.id)} 槽</span>${exTxt}`
+    : `正在看：<b>${t.label}向</b> <span class="mono">· 还没有素材</span>`;
+  $('#focusSlots').textContent = has ? `${lenOf(t.id)} 槽` : '0 槽';
+  $('#btnExtraClear').style.display = nEx ? '' : 'none';
+  if (!has) { $('#candN').textContent = '0'; return; }
+
+  const n = t.frames.length;
+  $('#candN').textContent = n;
+  const nSampled = n - nEx;      // 附加帧排在末尾，用它分界打角标
+
+  /* 每个候选被放在时间轴的第几槽（同一帧可以重复用，所以是列表） */
+  const usedAt = new Map();
+  arrOf(t.id).forEach((ci, si) => {
+    if (!usedAt.has(ci)) usedAt.set(ci, []);
+    usedAt.get(ci).push(si + 1);
+  });
+
+  const others = any.filter(q => q !== t);
+  const gait = t.gait || {};
+
+  for (let i = 0; i < n; i++) {
+    const cell = document.createElement('div');
+    const slots = usedAt.get(i);
+    cell.className = 'cell' + (slots ? ' intl' : '');
+
+    const thumb = thumbOf(t.frames[i], 128);
+    if (P.grid4 && others.length) {
+      const main = document.createElement('div');
+      main.className = 'main';
+      main.appendChild(thumb);
+      cell.appendChild(main);
+
+      const refs = document.createElement('div');
+      refs.className = 'refs';
+      for (const q of others) {
+        const qf = q.frames[Math.min(i, q.frames.length - 1)];
+        if (!qf) continue;
+        const fig = document.createElement('figure');
+        fig.appendChild(thumbOf(qf, 40));
+        const cap = document.createElement('figcaption');
+        cap.textContent = q.label;
+        fig.appendChild(cap);
+        refs.appendChild(fig);
+      }
+      cell.appendChild(refs);
+    } else {
+      cell.appendChild(thumb);
+    }
+
+    const idx = document.createElement('span');
+    idx.className = 'idx'; idx.textContent = i + 1;
+    cell.appendChild(idx);
+
+    if (gait.contact === i) {
+      const ct = document.createElement('span');
+      ct.className = 'ct'; ct.textContent = '接触';
+      cell.appendChild(ct);
+    }
+
+    /* 从视频抽出来的帧，右下角标时间戳（挑帧时对拍用）；
+       图片序列没有时间轴可言，标出来只会和左上角的帧号重复。 */
+    if (t.video && i < t.raw.length) {
+      const tm = document.createElement('span');
+      tm.className = 'tm';
+      const tv = t.times && t.times[i] !== undefined ? t.times[i] : (i / Math.max(1, n));
+      tm.textContent = (tv * (t.duration || 1)).toFixed(2) + 's';
+      cell.appendChild(tm);
+    }
+
+    if (i >= nSampled) {
+      const ex = document.createElement('span');
+      ex.className = 'ex';
+      ex.textContent = '附加';
+      ex.title = '手工导入的 PNG（不参与步态分析）';
+      cell.appendChild(ex);
+    }
+
+    if (slots) {
+      const u = document.createElement('span');
+      u.className = 'used';
+      u.textContent = slots.length > 3 ? `槽 ${slots[0]}…` : '槽 ' + slots.join(',');
+      u.title = '这一帧被用在时间轴第 ' + slots.join('、') + ' 槽';
+      cell.appendChild(u);
+    }
+
+    cell.title = `${t.label}向 候选 #${i + 1}`;
+    cell.onclick = e => {
+      if (e.altKey || e.metaKey) replaceSlot(i);
+      else if (e.shiftKey) insertSlot(i);
+      else appendSlot(i);
+      lastClicked = i;
+    };
+    grid.appendChild(cell);
+  }
+}
+
+/* ===================== 时间轴操作 ===================== */
+/* 点候选帧 → 落到时间轴。联动时四方向一起加，但每个方向加的是「自己节奏里的
+   同一时刻」（同一个 u），所以在共享的槽号上仍然对拍。 */
+function addFrame(base, t, mode) {
+  if (!t || !t.frames.length) return;
+  const u = uOf(t, base);
+  const targets = P.link ? live() : [t];
+  for (const q of targets) {
+    const idx = q === t ? base : idxAtU(q, u);
+    const a = arrOf(q.id);
+    const v = wrapIdx(idx, q.frames.length);
+    if (mode === 'replace') {
+      if (!a.length) a.push(v);
+      else a[Math.min(seqSel, a.length - 1)] = v;
+    } else if (mode === 'insert') {
+      a.splice(Math.min(seqSel + 1, a.length), 0, v);
+    } else {
+      a.push(v);
+    }
+  }
+  const a = arrOf(t.id);
+  seqSel = mode === 'insert' ? Math.min(seqSel + 1, a.length - 1) : a.length - 1;
+  if (mode === 'replace' && arrOf(t.id).length) seqSel = Math.min(seqSel, a.length - 1);
+  redrawTl();
+}
+
+function appendSlot(base)  { addFrame(base, tr(), 'append'); }
+function insertSlot(base)  { addFrame(base, tr(), 'insert'); }
+function replaceSlot(base) { addFrame(base, tr(), 'replace'); }
+
+/* 删除 / 复制：作用在「这一行」上；联动开着时同槽号一起动，四行不会错位 */
+function delSlot(i, id) {
+  const targets = P.link ? live() : [tOf(id || tr().id)].filter(Boolean);
+  for (const t of targets) {
+    const a = arrOf(t.id);
+    if (i >= 0 && i < a.length) a.splice(i, 1);
+  }
+  if (seqSel >= tLen()) seqSel = Math.max(0, tLen() - 1);
+  redrawTl();
+}
+function dupSlot(i, id) {
+  const targets = P.link ? live() : [tOf(id || tr().id)].filter(Boolean);
+  for (const t of targets) {
+    const a = arrOf(t.id);
+    if (i >= 0 && i < a.length) a.splice(i + 1, 0, a[i]);
+  }
+  seqSel = Math.min(i + 1, Math.max(0, tLen() - 1));
+  redrawTl();
+}
+function moveSlot(from, to, id) {
+  const targets = P.link ? live() : [tOf(id || tr().id)].filter(Boolean);
+  for (const t of targets) {
+    const a = arrOf(t.id);
+    if (from < 0 || from >= a.length || to < 0 || to >= a.length) continue;
+    const [m] = a.splice(from, 1);
+    a.splice(to, 0, m);
+  }
+  seqSel = to;
+  redrawTl();
+}
+function reverseRow(id) {
+  const targets = P.link ? live() : [tOf(id)].filter(Boolean);
+  for (const t of targets) arrOf(t.id).reverse();
+  redrawTl();
+}
+function clearRows() {
+  const targets = P.link ? live() : [tr()].filter(t => t.frames.length);
+  for (const t of targets) seqs[t.id] = [];
+  seqSel = 0; playIdx = 0;
+  redrawTl();
+}
+
+/* 时间轴相关的重绘都走这里，避免各处漏掉某一块 */
+function redrawTl() {
+  if (!playing) playIdx = Math.min(playIdx, Math.max(0, tLen() - 1));
+  renderTimeline(); renderCandidates(); drawPreview(); renderConsistency(); renderGait();
+}
+
+function renderTimeline() {
+  const box = $('#tlrows');
+  box.innerHTML = '';
+  const any = live();
+  const total = tLen();
+  $('#tlN').textContent = total ? `${total} 槽 · ${any.map(t => lenOf(t.id)).join('/')}` : '0 帧';
+
+  if (!any.length) {
+    const d = document.createElement('div');
+    d.className = 'tlempty';
+    d.textContent = '先在左侧载入素材';
+    box.appendChild(d);
+    return;
+  }
+
+  for (const d of DIRS) {
+    const t = tOf(d.id);
+    const has = t.frames.length > 0;
+    const row = document.createElement('div');
+    row.className = 'tlrow' + (t.id === tr().id ? ' on' : ' dim');
+
+    const hd = document.createElement('div');
+    hd.className = 'tlrowhd';
+    hd.innerHTML = `<span class="dl">${d.label}</span>` +
+      `<span class="cnt">${has ? lenOf(t.id) : '—'}</span>`;
+    const mk = (txt, title, fn) => {
+      const b = document.createElement('button');
+      b.className = 'mini'; b.textContent = txt; b.title = title;
+      b.onclick = e => { e.stopPropagation(); fn(); };
+      hd.appendChild(b);
+      return b;
+    };
+    if (has) {
+      mk('⟲', '这一行按整步依次填满', () => {
+        fillRow(t, Math.min(Math.max(2, P.count | 0), Math.max(2, t.frames.length)));
+        focusDir(DIRS.indexOf(d));
+      });
+      mk('⇄', '这一行反序', () => reverseRow(t.id));
+      mk('✕', '清空这一行', () => { seqs[t.id] = []; redrawTl(); });
+    }
+    hd.onclick = () => switchDir(DIRS.indexOf(d));
+    row.appendChild(hd);
+
+    const strip = document.createElement('div');
+    strip.className = 'tlstrip';
+    strip.dataset.dir = t.id;
+
+    const a = arrOf(t.id);
+    if (!has) {
+      const e = document.createElement('div');
+      e.className = 'tlempty';
+      e.textContent = '未载入';
+      strip.appendChild(e);
+    } else if (!a.length) {
+      const e = document.createElement('div');
+      e.className = 'tlempty';
+      e.textContent = '空 · 点右侧候选帧加进来，或点 ⟲ 按整步填满';
+      strip.appendChild(e);
+    }
+
+    a.forEach((ci, i) => {
+      const el = document.createElement('div');
+      el.className = 'tslot' + (i === wrapIdx(seqSel, Math.max(1, a.length)) ? ' on' : '');
+      el.draggable = true;
+      el.dataset.i = i;
+      el.dataset.dir = t.id;
+
+      const g = document.createElement('div');
+      g.className = 'g1t';
+      g.appendChild(thumbOf(t.frames[ci], 34));
+      el.appendChild(g);
+
+      const tn = document.createElement('span');
+      tn.className = 'tn'; tn.textContent = i + 1;
+      el.appendChild(tn);
+
+      const kk = document.createElement('span');
+      kk.className = 'tm';
+      kk.style.cssText = 'position:absolute;right:2px;bottom:1px;font-family:var(--mono);font-size:8.5px;color:#6b7686';
+      kk.textContent = `#${ci + 1}`;
+      el.appendChild(kk);
+
+      const del = document.createElement('button');
+      del.className = 'tdel'; del.textContent = '×';
+      del.onclick = e => { e.stopPropagation(); delSlot(i, t.id); };
+      el.appendChild(del);
+
+      el.onclick = () => focusDir(DIRS.indexOf(d), i);
+      el.ondblclick = () => dupSlot(i, t.id);
+
+      el.ondragstart = e => { e.dataTransfer.setData('text/plain', `${t.id}:${i}`); el.classList.add('drag'); };
+      el.ondragend = () => el.classList.remove('drag');
+      el.ondragover = e => { e.preventDefault(); el.style.borderColor = 'var(--acc2)'; };
+      el.ondragleave = () => { el.style.borderColor = ''; };
+      el.ondrop = e => {
+        e.preventDefault(); el.style.borderColor = '';
+        const [fromDir, fromS] = (e.dataTransfer.getData('text/plain') || '').split(':');
+        const from = parseInt(fromS, 10);
+        if (isNaN(from) || from === i) return;
+        moveSlot(from, i, fromDir || t.id);
+      };
+
+      strip.appendChild(el);
+    });
+
+    if (has) {
+      const add = document.createElement('div');
+      add.className = 'tslot add';
+      add.textContent = '+';
+      add.title = '这一行按整步填满';
+      add.onclick = e => {
+        e.stopPropagation();
+        fillRow(t, Math.min(Math.max(2, P.count | 0), Math.max(2, t.frames.length)));
+        focusDir(DIRS.indexOf(d));
+      };
+      strip.appendChild(add);
+    }
+
+    row.appendChild(strip);
+    box.appendChild(row);
+  }
+}
+
+/* ===================== 一致性 / 步态表 ===================== */
+function renderConsistency() {
+  const src = live();
+  const tb = $('#ctab');
+  const vd = $('#verdict');
+
+  if (!src.length) {
+    tb.innerHTML = '<tr><td colspan="4" style="color:#4f5869">—</td></tr>';
+    vd.className = 'verdict';
+    vd.textContent = '载入素材后显示';
+    setBadge('待载入', 'off');
+    return;
+  }
+
+  // 「步数」这一列是关键：stride（一个整步跨多少候选帧）如果大于候选池，
+  // 说明这段素材连一个完整步都没走完，做循环必然在中途跳变。
+  // 之前这套判断完全靠肉眼，用户只能感觉「步调不统一」却说不出为什么。
+  const strideRows = DIRS.map(d => {
+    const t = tOf(d.id);
+    if (!t || !t.frames.length || !t.stat) return null;
+    const S = effStride(t);
+    const pool = t.frames.length;
+    return { d, t, S, pool, cover: S > 0 ? pool / S : 0 };
+  });
+
+  tb.innerHTML = `<tr><th>方向</th><th>候选</th><th>步长</th><th>覆盖</th></tr>` +
+    strideRows.map((r, i) => {
+      if (!r) {
+        const d = DIRS[i];
+        return `<tr class="dim"><td>${d.label}</td><td>—</td><td>—</td><td>—</td></tr>`;
+      }
+      const short = r.S > 0 && r.cover < 1;
+      const st = r.S > 0 ? `${r.S}` : '—';
+      const cv = r.S > 0 ? `${r.cover.toFixed(2)}步` : '—';
+      return `<tr class="${short ? 'short' : ''}"><td>${r.d.label}</td><td>${r.pool}</td>` +
+        `<td>${st}</td><td style="color:${short ? 'var(--warn)' : 'inherit'}">${cv}</td></tr>`;
+    }).join('');
+
+  const shorts = strideRows.filter(r => r && r.S > 0 && r.cover < 1);
+  const strides = strideRows.filter(r => r && r.S > 0).map(r => r.S);
+
+  const hs = src.map(t => t.stat.hMax);
+  const dev = Math.max(...hs) ? (Math.max(...hs) - Math.min(...hs)) / Math.max(...hs) : 0;
+  const missing = 4 - src.length;
+  const ok = dev <= 0.06 && !missing && tLen() > 0;
+
+  // 步长离散度：四个方向的整步长度差多少。这个是「步调不统一」的直接来源，
+  // 光对相位没用 —— 步长差 30% 的话，对齐起点后播到一半就散了。
+  const sMin = strides.length ? Math.min(...strides) : 0;
+  const sMax = strides.length ? Math.max(...strides) : 0;
+  const sDev = sMin ? (sMax - sMin) / sMax : 0;
+
+  const bits = [];
+  bits.push(`单元格 ${G.outW}×${G.outH} 共用`);
+  bits.push(G.palN ? `调色板 ${G.palN} 色共用` : '调色板未启用');
+  bits.push(tLen() ? `时间轴 ${tLen()} 槽` : '时间轴为空');
+
+  const allOk = ok && !shorts.length && sDev <= 0.15;
+  vd.className = 'verdict' + (allOk ? '' : ' warn');
+  let txt = (allOk ? '✓ ' : '⚠ ') + bits.join(' · ');
+  txt += `<br>身高偏差 ${(dev*100).toFixed(1)}%（≤6%）· 步长 ${sMin||'—'}~${sMax||'—'} 离散 ${(sDev*100).toFixed(0)}%（≤15%）`;
+  if (missing) txt += ` · 还差 ${missing} 个方向`;
+  if (!tLen()) txt += ' · 时间轴为空';
+  if (shorts.length) {
+    txt += `<br><b style="color:var(--warn)">素材不足一个整步：</b>` +
+      shorts.map(r => `${r.d.label} 只有 ${r.cover.toFixed(2)} 步`).join('、') +
+      ` —— 循环点会落在半步中间，看起来像绊了一下。重生成更长的片段，或把「时间轴长度」调小到能整除的位置。`;
+  }
+  if (sDev > 0.15) txt += `<br><b style="color:var(--warn)">步长差异 ${(sDev*100).toFixed(0)}%</b> —— 四个方向的动作节奏本身就不一样，靠相位对齐补不回来，可点「按整步重配」拉伸到同一拍（会牺牲一点动作自然度）。`;
+  if (P.norm === 'global') txt += ' · 共用分母模式，取景不一致时会有高矮差';
+  vd.innerHTML = txt;
+
+  setBadge((allOk ? '✓ ' : '⚠ ') + `${src.length}/4 方向 · 偏差 ${(dev*100).toFixed(1)}%`, allOk ? '' : 'warn');
+}
+
+function renderGait() {
+  const src = live();
+  const tb = $('#gtab');
+  if (!src.length) {
+    tb.innerHTML = '<tr><td colspan="4" style="color:#4f5869">—</td></tr>';
+    return;
+  }
+  tb.innerHTML = `<tr><th>方向</th><th>步数</th><th>步长</th><th>相位</th></tr>` +
+    DIRS.map(d => {
+      const t = tOf(d.id);
+      if (!t || !t.gait || !t.frames.length) {
+        return `<tr class="dim"><td>${d.label}</td><td>—</td><td>—</td><td>—</td></tr>`;
+      }
+      const g = t.gait;
+      const n = t.frames.length;
+      const St = effStride(t);
+      const steps = Math.round((n / St) * 100) / 100;   // 这段素材里包含几个整步
+      // 相位 = 第 1 槽相对「接触帧」的偏移。0 表示四方向都从落地那一步起步。
+      let off = (((tLen() ? (candAt(d.id, 0) || 0) : 0) - g.contact) + n) % n;
+      if (off > n / 2) off -= n;
+      const manual = !!(P.steps && P.steps[d.id] > 0);
+      // 相位数字和微调按钮分两行放：四列都在 260px 的窄栏里，挤一行会被裁掉
+      return `<tr class="g"><td>${d.label}</td>` +
+        `<td><input class="stp" data-dir="${d.id}" type="number" step="0.1" min="0.3" max="8" ` +
+          `value="${steps}" title="这段素材走了几步（落地几次）。自动估计不准时手填，比拖动靠得住">` +
+        `</td>` +
+        `<td style="color:${manual ? 'var(--acc2)' : 'inherit'}">${St}</td>` +
+        `<td style="text-align:right">` +
+        `<div style="color:${off ? 'var(--warn)' : 'var(--acc)'};line-height:1.3">${off > 0 ? '+' : ''}${off}</div>` +
+        `<div style="line-height:1.3">` +
+        `<span class="nud" data-step="-1" data-dir="${d.id}" title="平移一步（换脚）">◀</span>` +
+        `<span class="nud" data-step="1" data-dir="${d.id}" title="平移一步（换脚）">▶</span>` +
+        `<span class="nud" data-step="-10" data-dir="${d.id}" title="-1 帧">‹</span>` +
+        `<span class="nud" data-step="10" data-dir="${d.id}" title="+1 帧">›</span>` +
+        `</div></td></tr>`;
+    }).join('');
+
+  tb.querySelectorAll('.stp').forEach(el => {
+    el.onchange = () => {
+      const id = el.dataset.dir;
+      const v = parseFloat(el.value);
+      const t = tOf(id);
+      if (!t || !t.frames.length) return;
+      if (!(v > 0)) { delete P.steps[id]; }
+      else P.steps[id] = Math.max(0.3, Math.min(8, v));
+      // 步数变了 → 这个方向的整步长度变了。只重铺这一行（长度不变，
+      // 里面每一槽按新的 contact+u×stride 重新取），别的方向是用户自己挑的，
+      // 不该被连坐。
+      if (lenOf(t.id)) fillRow(t, lenOf(t.id));
+      redrawTl();
+      toast(`${t.label}：${(t.frames.length / effStride(t)).toFixed(2)} 步 · 步长 ${effStride(t)} 帧`);
+    };
+  });
+
+  tb.querySelectorAll('.nud').forEach(el => {
+    el.onclick = () => {
+      const id = el.dataset.dir;
+      const t = tOf(id);
+      const raw = parseInt(el.dataset.step, 10);
+      // 平移「一步」= 一个 bob 周期：那是两次落地之间的间隔，正好换成另一只脚。
+      // 平移两个周期才会回到同一只脚。±10 编码成 ±1 帧的微调。
+      const g = t.gait || {};
+      const P1 = g.period > 0 ? g.period : Math.max(2, Math.round(t.frames.length / 4));
+      const step = Math.abs(raw) === 1 ? Math.sign(raw) * P1 : Math.sign(raw);
+      rebaseSeq(id, step);
+      renderGait(); renderCandidates(); renderTimeline(); drawPreview(); renderConsistency();
+    };
+  });
+}
+
+/* 调整某方向的索引：把时间轴里该方向的每一槽整体平移 */
+function rebaseSeq(id, step) {
+  const t = tOf(id);
+  if (!t || !t.frames.length) return;
+  const a = arrOf(id);
+  for (let i = 0; i < a.length; i++) a[i] = wrapIdx(a[i] + step, t.frames.length);
+}
+
+/* 自动对齐：把「第 1 槽 = 接触帧」和「四个方向同拍」一次做掉。
+   ------------------------------------------------------------------
+   只对齐起点是不够的：四个源片段的步频本来就不同（实测 bob 周期 11 / 7 / 11），
+   起点对齐之后播到第三四槽就又散开了。
+
+   正确的做法是把时间轴看成「一个整步等分成 N 格」，每个方向按自己的步长换算：
+     u_k   = (该槽在参考方向上的候选索引 − 接触帧) / 参考方向的整步长度
+     idx_t = 接触帧_t + u_k × 整步长度_t
+   u_k 不取模，所以时间轴跨了不止一个整步也照样对得上。用户已经挑好的姿态顺序
+   被保留（u_k 就是它们的位置），只是换到别的方向的节奏上去。 */
+function autoAlignPhase() {
+  const ref = tr();
+  const ok = applyAlign();
+  if (!ok) return toast('先载入素材，并在时间轴上拼几帧', true);
+  redrawTl();
+  toast(`已把「${ref.label}向」的 ${lenOf(ref.id)} 槽按相位换算到其它三个方向`);
+}
+
+/* 配速本身（纯改数据，不渲染）——载入完成后自动跑一次，不然四个方向一上来就不同拍 */
+function applyAlign() {
+  const src = live();
+  if (src.length < 2 || !tLen()) return false;
+  const ref = tr().frames.length ? tr() : src[0];
+  const refArr = arrOf(ref.id);
+  if (!refArr.length) return false;
+  // 以「当前方向」为准：它每一槽处在整步里的什么位置（u）是用户选出来的，
+  // 其它方向照着同一个 u 重新取自己节奏里的帧。不动参考方向本身。
+  for (const t of src) {
+    if (t === ref) continue;
+    seqs[t.id] = refArr.map(ci => idxAtU(t, uOf(ref, ci)));
+  }
+  return true;
+}
+
+/* 复位相位：只动当前方向（联动开着才四方向一起）。
+   早先这里是一把全清，跟「每方向独立」的模型正相反 —— 用户调好三个方向，
+   点一下清零全没了。 */
+function resetPhase() {
+  const targets = P.link ? live() : [tr()].filter(t => t.frames.length);
+  if (!targets.length) return;
+  for (const t of targets) {
+    seqs[t.id] = Array.from(
+      { length: Math.min(lenOf(t.id) || P.count, t.frames.length) }, (_, i) => i);
+  }
+  redrawTl();
+  toast(P.link ? '四个方向的相位已归零' : `已把「${tr().label}向」的相位归零`);
+}
+
+/* ===================== 播放 ===================== */
+function tick(ts) {
+  if (!playing) return;
+  const n = tLen();
+  if (n > 1) {
+    if (!lastT) lastT = ts;
+    const dt = ts - lastT, frameMs = 1000 / P.fps;
+    if (dt >= frameMs) {
+      lastT = ts - (dt % frameMs);
+      playIdx = playIdx + 1;
+      if (playIdx >= n) {
+        if (P.loop) playIdx = 0;
+        else { playIdx = n - 1; togglePlay(); }
+      }
+      seqSel = playIdx;
+      drawPreview(); markPlayhead();
+    }
+  }
+  rafId = requestAnimationFrame(tick);
+}
+/* 播放时只切 class，不重建整条时间轴：每帧重建 48 个 canvas 会掉帧 */
+function markPlayhead() {
+  // 四行各播各的索引，所以高亮要按「每行自己的长度」回绕，不能直接拿 seqSel 比
+  document.querySelectorAll('#tlrows .tlstrip').forEach(strip => {
+    const slots = strip.querySelectorAll('.tslot:not(.add)');
+    const n = slots.length;
+    slots.forEach((el, i) => el.classList.toggle('on', n > 0 && i === wrapIdx(seqSel, n)));
+  });
+}
+
+function togglePlay() {
+  if (!tLen()) return toast('时间轴还是空的', true);
+  playing = !playing;
+  lastT = 0;
+  $('#btnPlay').textContent = playing ? '❚❚' : '▶';
+  if (playing) rafId = requestAnimationFrame(tick); else cancelAnimationFrame(rafId);
+  drawPreview();
+}
+
+/* ===================== GIF =====================
+   为什么要自己解：GIF 在浏览器里是「一张有动画的图片」，createImageBitmap 只给
+   第一帧，把它当 PNG 载入等于只拿到一个姿势。要抽帧就必须把每一帧都取出来。
+
+   两条路：
+     1) ImageDecoder（WebCodecs）—— 有就用，浏览器自己解，最快最稳；
+     2) 内置 GIF89a 解析 —— 没有 ImageDecoder 时兜底（Safari/老内核），
+        同时保证 skill 自带文件在什么环境下都能用。
+   解出来的帧一律铺满逻辑屏幕、按 disposal 叠好，所以结果和「看到的 GIF」一致。 */
+
+function gifSkipBlocks(u8, p) {
+  while (p < u8.length) {
+    const n = u8[p++];
+    if (!n) break;
+    p += n;
+  }
+  return p;
+}
+
+/* LZW：GIF 的变长码。用 prefix/suffix 表展开，不建字符串表 ——
+   768px 的 GIF 用字符串表会吃掉几十 MB。 */
+function gifLZW(data, minCode, expected) {
+  const clear = 1 << minCode, eoi = clear + 1, MAXC = 4096;
+  const prefix = new Int16Array(MAXC), suffix = new Uint8Array(MAXC);
+  const out = new Uint8Array(expected);
+  let oi = 0;
+  let codeSize = minCode + 1, next = eoi + 1, prev = -1;
+
+  for (let i = 0; i < clear; i++) { prefix[i] = -1; suffix[i] = i; }
+  prefix[clear] = -1; suffix[clear] = 0;
+  prefix[eoi] = -1; suffix[eoi] = 0;
+
+  const total = data.length * 8;
+  let bitPos = 0;
+  const chain = [];
+
+  while (oi < expected) {
+    let code = 0;
+    for (let i = 0; i < codeSize; i++) {
+      const bp = bitPos + i;
+      if (bp >= total) { code = -1; break; }
+      code |= ((data[bp >> 3] >> (bp & 7)) & 1) << i;
+    }
+    if (code < 0) break;
+    bitPos += codeSize;
+    if (code === eoi) break;
+    if (code === clear) { codeSize = minCode + 1; next = eoi + 1; prev = -1; continue; }
+
+    chain.length = 0;
+    let c = (code < next) ? code : prev;
+    if (c < 0) break;
+    while (c >= 0) { chain.push(suffix[c]); c = prefix[c]; }
+    for (let i = chain.length - 1; i >= 0; i--) if (oi < expected) out[oi++] = chain[i];
+    const firstByte = chain[chain.length - 1];
+    if (code >= next && oi < expected) out[oi++] = firstByte;
+
+    if (prev >= 0 && next < MAXC) {
+      prefix[next] = prev; suffix[next] = firstByte; next++;
+      if (next === (1 << codeSize) && codeSize < 12) codeSize++;
+    }
+    prev = code;
+  }
+  return out;
+}
+
+/* 解析 GIF → [{ w, h, data:Uint8ClampedArray }]，data 是整幅 RGBA。
+   注意 disposal：GIF 每帧只写自己那块区域，dispose=2 要清回背景，
+   dispose=3 要恢复上一帧 —— 不处理就会看到上一帧的残影叠在新帧上。 */
+function gifParse(buf) {
+  const u8 = new Uint8Array(buf);
+  const sig = String.fromCharCode(u8[0], u8[1], u8[2], u8[3], u8[4], u8[5]);
+  if (sig !== 'GIF89a' && sig !== 'GIF87a') throw new Error('不是 GIF 文件');
+
+  const sw = u8[6] | (u8[7] << 8), sh = u8[8] | (u8[9] << 8);
+  const flags = u8[10];
+  let p = 13;
+  let gct = null;
+  if (flags & 0x80) {
+    const n = 2 << (flags & 7);
+    gct = u8.subarray(p, p + n * 3);
+    p += n * 3;
+  }
+
+  let screen = new Uint8ClampedArray(sw * sh * 4);
+  const frames = [];
+  let gce = { dispose: 0, transparent: -1, delay: 0 };
+  let keep = null;                    // dispose=3 用的「上一帧快照」
+
+  while (p < u8.length) {
+    const tag = u8[p++];
+    if (tag === 0x3b) break;
+
+    if (tag === 0x21) {                       // 扩展块
+      const label = u8[p++];
+      if (label === 0xf9 && u8[p] >= 4) {     // 图形控制
+        const fl = u8[p + 1];
+        gce = {
+          dispose: (fl >> 2) & 7,
+          transparent: (fl & 1) ? u8[p + 4] : -1,
+          delay: u8[p + 2] | (u8[p + 3] << 8),
+        };
+      }
+      p = gifSkipBlocks(u8, p);
+      continue;
+    }
+
+    if (tag !== 0x2c) break;                  // 未知块：收工
+    const left = u8[p] | (u8[p + 1] << 8);
+    const top = u8[p + 2] | (u8[p + 3] << 8);
+    const iw = u8[p + 4] | (u8[p + 5] << 8);
+    const ih = u8[p + 6] | (u8[p + 7] << 8);
+    const ip = u8[p + 8];
+    p += 9;
+
+    let ct = gct;
+    if (ip & 0x80) {
+      const n = 2 << (ip & 7);
+      ct = u8.subarray(p, p + n * 3);
+      p += n * 3;
+    }
+    if (!ct || !iw || !ih) { p = gifSkipBlocks(u8, p + 1); continue; }
+
+    const minCode = u8[p++];
+    const chunks = [];
+    let need = 0;
+    const scan = p;
+    let q = p;
+    while (q < u8.length) {
+      const n = u8[q++];
+      if (!n) break;
+      chunks.push(u8.subarray(q, q + n));
+      need += n;
+      q += n;
+    }
+    p = q;
+    const packed = new Uint8Array(need);
+    let off = 0;
+    for (const ch of chunks) { packed.set(ch, off); off += ch.length; }
+
+    if (gce.dispose === 3) keep = screen.slice();
+    const idx = gifLZW(packed, minCode, iw * ih);
+    const interlace = !!(ip & 0x40);
+    const tr = gce.transparent;
+
+    const putRow = (srcRow, y) => {
+      if (y < 0 || y >= sh) return;
+      for (let x = 0; x < iw; x++) {
+        const dx = left + x;
+        if (dx < 0 || dx >= sw) continue;
+        const ci = idx[srcRow * iw + x];
+        if (tr >= 0 && ci === tr) continue;          // 透明索引：保留底下那层
+        const o = (y * sw + dx) * 4;
+        screen[o] = ct[ci * 3];
+        screen[o + 1] = ct[ci * 3 + 1];
+        screen[o + 2] = ct[ci * 3 + 2];
+        screen[o + 3] = 255;
+      }
+    };
+
+    if (interlace) {
+      let sr = 0;
+      for (const [start, step] of [[0, 8], [4, 8], [2, 4], [1, 2]]) {
+        for (let y = start; y < ih; y += step) putRow(sr++, top + y);
+      }
+    } else {
+      for (let y = 0; y < ih; y++) putRow(y, top + y);
+    }
+
+    frames.push({ w: sw, h: sh, data: screen.slice(), delay: gce.delay });
+
+    if (gce.dispose === 2) {
+      /* 「恢复背景」按浏览器的做法清成透明，而不是填逻辑屏背景色。
+         规范/PIL 会填背景色，但 Chromium 的 ImageDecoder 清透明 —— 主路径是
+         ImageDecoder，两条路必须同结果，否则同一个 GIF 在不同环境下帧内容不一样。
+         对绿幕素材也更安全：宁可留个透明洞给抠图，也不要凭空糊一块不透明的绿。 */
+      for (let y = 0; y < ih; y++) {
+        const yy = top + y;
+        if (yy < 0 || yy >= sh) continue;
+        for (let x = 0; x < iw; x++) {
+          const xx = left + x;
+          if (xx < 0 || xx >= sw) continue;
+          const o = (yy * sw + xx) * 4;
+          screen[o] = screen[o + 1] = screen[o + 2] = screen[o + 3] = 0;
+        }
+      }
+    } else if (gce.dispose === 3 && keep) {
+      screen = keep.slice();
+    }
+    keep = null;
+    gce = { dispose: 0, transparent: -1, delay: gce.delay };
+  }
+
+  if (!frames.length) throw new Error('GIF 里没有可用的帧');
+  return frames;
+}
+
+function bitmapFromRGBA(w, h, data) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  cv.getContext('2d', { willReadFrequently: true }).putImageData(new ImageData(data, w, h), 0, 0);
+  return createImageBitmap(cv);
+}
+
+/* GIF → ImageBitmap[]。返回的数组就是「这个 GIF 的所有帧」。 */
+async function gifToBitmaps(blob) {
+  const buf = await blob.arrayBuffer();
+  if (typeof ImageDecoder !== 'undefined') {
+    try {
+      const dec = new ImageDecoder({ data: buf, type: 'image/gif' });
+      await dec.completed;
+      const track = dec.tracks.selectedTrack;
+      const n = (track && track.frameCount) || 0;
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const { image } = await dec.decode({ frameIndex: i });
+        out.push(await createImageBitmap(image));
+        if (image.close) image.close();
+      }
+      if (out.length) return out;
+    } catch (e) {
+      console.warn('ImageDecoder 解 GIF 失败，改用内置解析器', e);
+    }
+  }
+  const frames = gifParse(buf);
+  const out = [];
+  for (const f of frames) out.push(await bitmapFromRGBA(f.w, f.h, f.data));
+  return out;
+}
+
+/* ===================== 载入器 ===================== */
+async function newVideoFromBlob(blob) {
+  const url = URL.createObjectURL(blob);
+  const v = document.createElement('video');
+  v.src = url; v.muted = true; v.playsInline = true; v.preload = 'auto';
+  await new Promise((res, rej) => {
+    v.onloadedmetadata = res;
+    v.onerror = () => rej(new Error('视频解码失败'));
+    setTimeout(res, 8000);
+  });
+  await new Promise(res => { if (v.readyState >= 2) res(); else v.oncanplay = res; setTimeout(res, 4000); });
+  return { v, url };
+}
+
+async function putVideo(t, blob) {
+  const { v, url } = await newVideoFromBlob(blob);
+  if (t.url) URL.revokeObjectURL(t.url);
+  t.video = v; t.url = url; t.images = null;
+  t.vw = v.videoWidth; t.vh = v.videoHeight; t.duration = v.duration || 0;
+  t.frozen = false; t.mirrorSig = '';
+  t.dirty = true; t.keyed = []; t.frames = [];
+}
+
+async function putImages(t, bitmaps) {
+  if (t.url) URL.revokeObjectURL(t.url);
+  t.video = null; t.url = null; t.images = bitmaps;
+  t.vw = bitmaps[0].width; t.vh = bitmaps[0].height; t.duration = bitmaps.length;
+  t.frozen = false; t.mirrorSig = '';
+  t.dirty = true; t.keyed = []; t.frames = [];
+}
+
+function flipBitmap(bmp) {
+  const c = document.createElement('canvas');
+  c.width = bmp.width; c.height = bmp.height;
+  const g = c.getContext('2d');
+  g.translate(bmp.width, 0); g.scale(-1, 1);
+  g.drawImage(bmp, 0, 0);
+  return c;
+}
+
+function guessDir(name) {
+  const n = name.toLowerCase();
+  const map = [
+    ['front', 'front'], ['前', 'front'], ['正面', 'front'],
+    ['back', 'back'], ['后', 'back'], ['背面', 'back'],
+    ['left', 'left'], ['左', 'left'],
+    ['right', 'right'], ['右', 'right'],
+  ];
+  for (const [k, v] of map) if (n.includes(k)) return v;
+  return null;
+}
+
+/* ===================== 文件类型判别 =====================
+   只看 file.type 不够：Windows/macOS 上拖着文件夹里的文件进来时 type 常常是空，
+   .gif 也会被归成 image/*（然后被当成一张静图，只取第一帧）。所以扩展名兜底。 */
+const isGifFile = f => (f.type === 'image/gif') || /\.gif$/i.test(f.name || '');
+const isVidFile = f => (f.type || '').startsWith('video/')
+  || /\.(mp4|webm|mov|m4v|mkv)$/i.test(f.name || '');
+const isImgFile = f => !isGifFile(f) && ((f.type || '').startsWith('image/')
+  || /\.(png|webp|jpe?g|bmp|avif)$/i.test(f.name || ''));
+
+/* GIF → 该方向的素材（像视频一样可重新抽帧） */
+async function putGif(t, file) {
+  const bmps = await gifToBitmaps(file);
+  if (!bmps.length) throw new Error('GIF 没有帧');
+  await putImages(t, bmps);
+  return bmps.length;
+}
+
+/* ===================== 导入 =====================
+   两类东西分开处理，因为它们进的是不同的地方：
+     - 视频 / GIF → 「素材」，会被重新采样成候选帧；
+     - PNG       → 「候选帧」，逐张 1:1 追加到池子末尾。
+   以前 PNG 走的是「替换素材」那条路，结果想补几帧只能把整段素材冲掉。 */
+async function handleFiles(files, mode) {
+  const arr = Array.from(files);
+  const forceExtra = mode === 'extra';
+  const gifs = arr.filter(isGifFile);
+  const vids = arr.filter(isVidFile);
+  const imgs = arr.filter(isImgFile);
+
+  if (!forceExtra && (vids.length || gifs.length)) {
+    const plan = [...vids, ...gifs].map(f => ({ file: f, dir: guessDir(f.name) }));
+    const free = DIRS.map(d => d.id).filter(id => { const t = tOf(id); return !t.video && !t.images; });
+    const used = new Set(plan.filter(p => p.dir).map(p => p.dir));
+    for (const p of plan) {
+      if (p.dir) continue;
+      p.dir = free.find(id => !used.has(id)) || 'front';
+      used.add(p.dir);
+    }
+    setBusy(true);
+    const notes = [];
+    for (const p of plan) {
+      const t = tOf(p.dir);
+      try {
+        if (isGifFile(p.file)) {
+          const n = await putGif(t, p.file);
+          notes.push(`${t.label} GIF ${n} 帧`);
+        } else {
+          await putVideo(t, p.file);
+        }
+      } catch (e) {
+        notes.push(`${p.file.name}: ${e.message}`);
+      }
+    }
+    active = Math.max(0, tracks.findIndex(x => x.id === plan[0].dir));
+    P.tStart = 0; P.tEnd = 100; syncUI();
+    await buildAll({ resample: true, resetSeq: true });
+    setBusy(false);
+    toast(`载入 ${plan.length} 个方向：` + plan.map(p => tOf(p.dir).label).join('/')
+          + (notes.length ? ` · ${notes.join(' · ')}` : ''));
+    if (imgs.length) await addPngCandidates(imgs);
+    return;
+  }
+
+  const extra = forceExtra ? arr : imgs;
+  if (extra.length) { await addPngCandidates(extra); return; }
+  toast('不支持的文件类型', true);
+}
+
+/* PNG（或强制 extra 模式下的任何图片）→ 追加到候选池末尾。
+   没有素材的空轨道上，这批图直接当素材源：否则用户拖了一堆 PNG 却什么都不出现。 */
+async function addPngCandidates(files) {
+  const arr = Array.from(files)
+    .filter(f => isImgFile(f) || isGifFile(f))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN', { numeric: true }));
+  if (!arr.length) return toast('没有可用的图片', true);
+
+  let dir = guessDir(arr[0].name || '') || DIRS[active].id;
+  /* 镜像模式下的右向是左向翻出来的，往右向塞图会被下一轮镜像覆盖掉 —— 直接改投左向。 */
+  if (P.mirrorRight && dir === 'right') dir = 'left';
+  const t = tOf(dir);
+
+  const bmps = [];
+  for (const f of arr) {
+    try {
+      if (isGifFile(f)) bmps.push(...await gifToBitmaps(f));
+      else bmps.push(await createImageBitmap(f));
+    } catch (e) { console.warn('读取失败', f.name, e); }
+  }
+  if (!bmps.length) return toast('没有读到图片', true);
+
+  setBusy(true);
+  if (!t.video && !t.images) {
+    await putImages(t, bmps);
+    await buildAll({ resample: true, resetSeq: true });
+    setBusy(false);
+    toast(`${t.label}向没有素材 → 直接以这 ${bmps.length} 张图为素材（会按目标帧数重采样）`);
+  } else {
+    t.extras = (t.extras || []).concat(bmps);
+    await buildAll({ resample: false, resetSeq: false });
+    setBusy(false);
+    toast(`${t.label}向候选 +${bmps.length}（共 ${t.frames.length} 帧，附加帧排在末尾）`);
+  }
+  focusDir(Math.max(0, tracks.findIndex(x => x.id === dir)));
+}
+
+async function clearExtras() {
+  const t = tr();
+  if (!t.extras || !t.extras.length) return toast('这个方向没有附加帧');
+  const n = t.extras.length;
+  t.extras = [];
+  await buildAll({ resample: false, resetSeq: false });
+  toast(`已移除 ${n} 张附加帧（候选 ${t.frames.length}）`);
+}
+
+
+function setBusy(on) {
+  document.body.style.cursor = on ? 'progress' : '';
+  if (on) $('#hudMode').textContent = '处理中…';
+}
+
+/* 素材来源。
+   ------------------------------------------------------------------
+   Skill 里不带任何示例素材 —— 帧目录由调用方指定，四种方式：
+
+     1. URL 参数（最常用）：
+          index.html?frames=../../frames/walk
+        studio 会先找 <frames>/front/manifest.json，没有就读目录列表，
+        PNG / GIF / mp4 都能直接用；
+     2. 版本化视频：
+          index.html?videos=/videos
+        读 videos/index.json，出下拉，按版本号载入原始 mp4（可重新抽帧）；
+     3. 显式映射：
+          index.html?front=../a/front&back=../a/back&right=../a/right
+     4. 手动拖入视频 / GIF（当素材）或 PNG（追加到候选帧）。
+
+   `?frames=` 时四个方向对应 <base>/{front,back,left,right}/，
+   缺哪个就跳过哪个 —— 只做单方向也完全可用。 */
+const QS = new URLSearchParams(location.search);
+const FRAME_BASE = QS.get('frames') || '';
+const SEQDIR = (() => {
+  const explicit = {};
+  for (const d of (typeof DIRS !== 'undefined' ? DIRS : [])) {
+    const v = QS.get(d.id);
+    if (v) explicit[d.id] = v;
+  }
+  if (Object.keys(explicit).length) return explicit;
+  if (!FRAME_BASE) return {};
+  const base = FRAME_BASE.replace(/\/$/, '');
+  const m = {};
+  for (const id of ['front', 'back', 'left', 'right']) m[id] = [`${base}/${id}`];
+  return m;
+})();
+const HAS_DEMO = Object.keys(SEQDIR).length > 0;
+
+/* ?videos=/videos —— 版本化的原始视频（generate.py 归档出来的那些 mp4）。
+   和 ?frames= 是两条入口：frames 已经裁好，videos 是「从原始素材重新抽帧」，
+   想换一套采样就得有视频，光有帧是换不出来的。 */
+const VIDEO_BASE = (QS.get('videos') || '').replace(/\/$/, '');
+let VID_INDEX = null;
+
+async function loadVideoIndex() {
+  if (!VIDEO_BASE) return null;
+  try {
+    const r = await fetch(`${VIDEO_BASE}/index.json`);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    console.warn('videos/index.json 读不到', e);
+    return null;
+  }
+}
+
+function renderVidChooser(js) {
+  const box = $('#vidBox'), sel = $('#vidSel');
+  const vs = (js.versions || []).filter(v => v && v.files && Object.keys(v.files).length);
+  if (!vs.length) { box.style.display = 'none'; return; }
+  const zh = { front: '前', back: '后', left: '左', right: '右' };
+  box.style.display = '';
+  sel.innerHTML = '';
+  for (const v of vs.slice().sort((a, b) => b.version - a.version)) {
+    const o = document.createElement('option');
+    o.value = String(v.version);
+    const views = Object.keys(v.files).map(k => zh[k] || k).join('');
+    o.textContent = `v${String(v.version).padStart(2, '0')} · ${v.action || 'clip'}`
+      + `${v.frames ? ' · ' + v.frames + '帧' : ''} · ${views}`;
+    sel.appendChild(o);
+  }
+  $('#vidNote').textContent =
+    `${vs.length} 个版本 · ${VIDEO_BASE}/ · 选一个载入即可重新抽帧`;
+}
+
+async function loadVideoVersion(version) {
+  const js = VID_INDEX || await loadVideoIndex();
+  if (!js) return toast('没有读到 videos/index.json', true);
+  VID_INDEX = js;
+  const v = (js.versions || []).find(x => String(x.version) === String(version));
+  if (!v) return toast('这个版本不存在', true);
+
+  setBusy(true);
+  let ok = 0;
+  const miss = [];
+  for (const d of DIRS) {
+    const name = (v.files || {})[d.id];
+    if (!name) continue;
+    try {
+      const r = await fetch(`${VIDEO_BASE}/${name}`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      await putVideo(tOf(d.id), await r.blob());
+      ok++;
+    } catch (e) {
+      miss.push(d.label);
+      console.warn('载入失败', name, e);
+    }
+  }
+  setBusy(false);
+  if (!ok) return toast('一个视频都没载入成功', true);
+  P.tStart = 0; P.tEnd = 100;
+  syncUI();
+  await buildAll({ resample: true, resetSeq: true });
+  const lab = `v${String(v.version).padStart(2, '0')}`;
+  toast(`${lab} 已载入 ${ok} 个方向` + (miss.length ? `　缺：${miss.join('/')}` : ''));
+}
+
+
+/* 目录里有什么？—— 读服务器目录列表。
+   manifest.json 只有本 skill 自己的脚本会写；手工裁过帧的目录（trim_loop.py 那种
+   frame_001.png）没有 manifest，靠猜 h3_###.png 会一个都找不到，然后「整个方向缺失」。
+   目录列表是 SimpleHTTPRequestHandler 自带的，比猜文件名可靠得多。 */
+async function listDir(folder) {
+  try {
+    const r = await fetch(`${folder.replace(/\/$/, '')}/`);
+    if (!r.ok) return [];
+    const html = await r.text();
+    const out = [];
+    const re = /href="([^"?#]+\.(?:png|gif|webp|jpe?g|bmp|mp4|webm|mov))"/gi;
+    let m;
+    while ((m = re.exec(html))) {
+      const name = decodeURIComponent(m[1].split('/').filter(Boolean).pop());
+      if (name && !out.includes(name)) out.push(name);
+    }
+    return out.sort((a, b) => a.localeCompare(b, 'zh-CN', { numeric: true }));
+  } catch (e) {
+    return [];
+  }
+}
+
+/* 一个方向 = 一个目录。里面是 PNG 就当图片序列，是 GIF 就当序列，是 mp4 就当视频。
+   顺序有讲究：有 PNG 就只用 PNG（帧已经裁好，比重新解码视频更保真）。 */
+async function loadMedia(dirId, folder, names) {
+  const t = tOf(dirId);
+  const base = folder.replace(/\/$/, '');
+  const imgs = names.filter(n => /\.(png|webp|jpe?g|bmp)$/i.test(n));
+  if (imgs.length) {
+    const bmps = [];
+    for (const n of imgs) {
+      try {
+        const r = await fetch(`${base}/${n}`);
+        if (r.ok) bmps.push(await createImageBitmap(await r.blob()));
+      } catch (e) {}
+    }
+    if (!bmps.length) return false;
+    await putImages(t, bmps);
+    console.log(`${dirId} <- ${base} (${bmps.length} png)`);
+    return true;
+  }
+  const gif = names.find(n => /\.gif$/i.test(n));
+  if (gif) {
+    try {
+      const r = await fetch(`${base}/${gif}`);
+      if (r.ok && await putGif(t, await r.blob())) {
+        console.log(`${dirId} <- ${base}/${gif} (gif)`);
+        return true;
+      }
+    } catch (e) {}
+  }
+  const vid = names.find(n => /\.(mp4|webm|mov)$/i.test(n));
+  if (vid) {
+    try {
+      const r = await fetch(`${base}/${vid}`);
+      if (r.ok) {
+        await putVideo(t, await r.blob());
+        console.log(`${dirId} <- ${base}/${vid} (video)`);
+        return true;
+      }
+    } catch (e) {}
+  }
+  return false;
+}
+
+async function loadQuadDemo() {
+  setBusy(true);
+  try {
+    let ok = 0;
+    const missing = [];
+    for (const d of DIRS) {
+      const entry = SEQDIR[d.id];
+      if (!entry) { missing.push(d.label); continue; }
+      const list = Array.isArray(entry) ? entry : [entry];
+      let done = false;
+      for (const folder of list) {
+        let names = [];
+        try {
+          const mf = await fetch(`${folder.replace(/\/$/, '')}/manifest.json`);
+          if (mf.ok) names = (await mf.json()).frames.map(String);
+        } catch (e) {}
+        if (!names.length) names = await listDir(folder);
+        if (names.length && await loadMedia(d.id, folder, names)) {
+          done = true; ok++; break;
+        }
+      }
+      if (!done) { missing.push(d.label); console.warn('missing', d.id, list); }
+    }
+    if (!ok) throw new Error('没有找到帧（检查 ?frames= 路径，或直接拖入视频）');
+    P.count = 12; P.mult = 4; P.tStart = 0; P.tEnd = 100;
+    syncUI();
+    await buildAll({ resample:true, resetSeq:true });
+    // 载入即播：默认暂停的话，用户看到的是时间轴第 0 帧的静图，
+    // 会以为「没有动画预览」。这里直接循环起来。
+    P.loop = true;
+    if (!playing && tLen() > 1) { playIdx = 0; seqSel = 0; togglePlay(); }
+    /* 载入完成回到「只看当前方向」。但 URL 里显式点名了布局（?cmp=2x2）
+       就以 URL 为准 —— 否则分享出去的「四方向对比」链接打开还是单图。 */
+    const cmpQ = QS.get('cmp');
+    P.cmpMode = ['focus', '2x2', '1x4'].includes(cmpQ) ? cmpQ : 'focus';
+    syncUI();
+    const miss = missing.length ? `　缺：${missing.join('/')}` : '';
+    toast(`已载入 ${ok}/4 个方向${miss} · 右侧候选池只显示当前方向，切方向点上方的四个按钮`);
+  } catch (e) {
+    setBusy(false);
+    toast('示例缺失: ' + e.message, true);
+  }
+}
+
+async function loadDemo() {
+  setBusy(true);
+  try {
+    const res = await fetch('demo/walk_side_demo.mp4');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const t = tr();
+    await putVideo(t, blob);
+    P.tStart = 0; P.tEnd = 100; P.count = 8; P.mult = 2; syncUI();
+    await buildAll({ resample:true, resetSeq:true });
+    toast('示例已载入 · ' + t.label);
+  } catch (e) {
+    setBusy(false);
+    toast('示例视频缺失: ' + e.message, true);
+  }
+}
+
+/* ===================== 吸管 ===================== */
+function pickColorFromCanvas(cv, e) {
+  const r = cv.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / r.width * cv.width);
+  const y = Math.floor((e.clientY - r.top) / r.height * cv.height);
+  const d = cv.getContext('2d').getImageData(x, y, 1, 1).data;
+  P.key = [d[0], d[1], d[2]];
+  syncUI();
+  buildAll({});
+  toast(`键色 → rgb(${d[0]}, ${d[1]}, ${d[2]})`);
+}
+
+/* ===================== 导出 ===================== */
+function collectRows() {
+  const all = tracks.filter(t => t.frames.length);
+  if (!all.length || !tLen()) return [];
+  const use = P.merge ? all : [tr()].filter(t => t.frames.length);
+  return use.map(t => ({
+    dir: t.id, label: t.label,
+    frames: arrOf(t.id).map(i => t.frames[i]).filter(Boolean),
+  })).filter(r => r.frames.length);
+}
+
+function exportSheet() {
+  try {
+    const rows = collectRows();
+    if (!rows.length) return toast('时间轴里没有帧', true);
+
+    const cellW = rows[0].frames[0].w, cellH = rows[0].frames[0].h;
+    const maxCols = Math.max(...rows.map(r => r.frames.length));
+    const cols = P.cols > 0 ? Math.min(P.cols, maxCols) : maxCols;
+    const rowCount = rows.reduce((s, r) => s + Math.ceil(r.frames.length / cols), 0);
+    const gap = P.gap | 0, sc = P.scale | 0;
+
+    const W = cols * cellW * sc + Math.max(0, cols - 1) * gap;
+    const H = rowCount * cellH * sc + Math.max(0, rowCount - 1) * gap;
+
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, W, H);
+
+    const atlas = {
+      meta: { image:`${P.fname}.png`, cellWidth:cellW*sc, cellHeight:cellH*sc,
+              columns:cols, rows:rowCount, scale:sc, gap, fps:P.fps,
+              directions: rows.map(r => r.dir) },
+      animations: {},
+    };
+
+    let rowIdx = 0;
+    for (const r of rows) {
+      const frames = [];
+      r.frames.forEach((f, i) => {
+        const c = i % cols, rr = rowIdx + Math.floor(i / cols);
+        const dx = c * (cellW * sc + gap), dy = rr * (cellH * sc + gap);
+        ctx.drawImage(f.canvas, dx, dy, f.w * sc, f.h * sc);
+        frames.push({ x:dx, y:dy, w:f.w*sc, h:f.h*sc, duration: Math.round(1000 / P.fps) });
+      });
+      atlas.animations[r.dir] = { label:r.label, frames };
+      rowIdx += Math.ceil(r.frames.length / cols);
+    }
+
+    const m = $('#modal'), mc = $('#mCanvas');
+    mc.width = W; mc.height = H;
+    const mg = mc.getContext('2d');
+    mg.imageSmoothingEnabled = false;
+    mg.clearRect(0, 0, W, H);
+    mg.drawImage(cv, 0, 0);
+    const z = Math.min(window.innerWidth * 0.78 / W, window.innerHeight * 0.62 / H, 6);
+    mc.style.width = Math.round(W*z) + 'px';
+    mc.style.height = Math.round(H*z) + 'px';
+    $('#mMeta').textContent =
+      `${W}×${H} · ${cols} 列 × ${rowCount} 行 · 单元格 ${cellW}×${cellH} · ${sc}× · ${rows.length} 方向 · ${rows.map(r => r.frames.length).join('/')} 槽`;
+    m.classList.add('on');
+
+    window.__lastAtlas = atlas;
+    window.__lastSheet = { canvas:cv, blob:null };
+    window.__sheetName = P.merge ? `${P.fname}_sheet.png` : `${P.fname}_${rows[0].dir}.png`;
+    cv.toBlob(b => { if (window.__lastSheet) window.__lastSheet.blob = b; }, 'image/png');
+    toast(`已生成 ${window.__sheetName} · ${W}×${H}`);
+  } catch (e) {
+    document.title = 'EXPORT ERR: ' + e.message;
+    console.error(e);
+    toast('导出失败: ' + e.message, true);
+  }
+}
+
+function downloadSheet() {
+  const s = window.__lastSheet;
+  if (!s) return toast('没有可下载的表', true);
+  if (!s.blob) { s.canvas.toBlob(b => { s.blob = b; download(b, window.__sheetName || 'sheet.png'); }, 'image/png'); return; }
+  download(s.blob, window.__sheetName || 'sheet.png');
+  toast('已开始下载');
+}
+function exportJson() {
+  const atlas = window.__lastAtlas;
+  if (!atlas) return toast('先导出一次 Sprite Sheet，再导 JSON', true);
+  download(new Blob([JSON.stringify(atlas, null, 2)], { type:'application/json' }), `${P.fname}_atlas.json`);
+  toast('已导出 atlas JSON');
+}
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ===================== 渲染总入口 ===================== */
+function renderAll() {
+  renderSlots();
+  renderDirbar();
+  renderCandidates();
+  renderTimeline();
+  drawPreview();
+  renderConsistency();
+  renderGait();
+}
+
+function renderSlots() {
+  const box = $('#slots');
+  box.innerHTML = '';
+  DIRS.forEach((d, i) => {
+    const t = tOf(d.id);
+    const has = !!(t.video || t.images);
+    const el = document.createElement('div');
+    el.className = 'slot' + (has ? ' has' : '') + (i === active ? ' on' : '');
+    el.innerHTML = `<div class="k">${d.label}</div>` +
+      `<div class="nm">${d.id}${P.mirrorRight && d.id === 'right' ? '（镜像）' : ''}</div>` +
+      `<div class="st">${has ? (t.frames.length ? `${t.frames.length} 帧` : '待抽帧') : '空'}</div>`;
+    el.onclick = () => focusDir(i);
+    box.appendChild(el);
+  });
+}
+
+/* 切方向 = 换整个右侧候选池 + 中间的预览 + 时间轴的高亮行。
+   这是这套 UI 里唯一「现在在编辑哪个方向」的开关，所以做得大、放在候选池正上方。
+   所有会改变 active 的地方都必须走这里 —— 否则就会出现「候选池换了、时间轴高亮
+   没换」这种半更新状态。 */
+function focusDir(i, sel) {
+  if (i < 0 || i >= DIRS.length) return;
+  const changed = i !== active;
+  active = i;
+  const n = lenOf(DIRS[i].id);
+  if (sel !== undefined && sel !== null) {
+    seqSel = n ? Math.min(sel, n - 1) : 0;
+    playIdx = seqSel;
+  } else if (changed) {
+    seqSel = n ? Math.min(seqSel, n - 1) : 0;
+    playIdx = seqSel;
+  }
+  renderAll();
+}
+function switchDir(i) {
+  if (i === active) return;
+  focusDir(i);
+}
+
+function renderDirbar() {
+  const bar = $('#dirbar');
+  bar.innerHTML = '';
+  DIRS.forEach((d, i) => {
+    const t = tOf(d.id);
+    const has = t.frames.length > 0;
+    const el = document.createElement('div');
+    el.className = 'dt' + (i === active ? ' on' : '') + (has ? ' has' : ' none');
+    el.innerHTML = `<i class="d"></i><span class="lb">${d.label}</span>` +
+      `<span class="sub">${has ? `${t.frames.length}帧·${lenOf(d.id)}槽` : '空'}</span>`;
+    el.title = has
+      ? `${d.label}向：${t.frames.length} 个候选帧，时间轴已放 ${lenOf(d.id)} 槽`
+      : `${d.label}向：还没有素材`;
+    el.onclick = () => switchDir(i);
+    bar.appendChild(el);
+  });
+}
+
+function setBadge(text, cls) {
+  const b = $('#topBadge');
+  b.textContent = text;
+  b.className = 'badge' + (cls ? ' ' + cls : '');
+}
+
+/* ===================== UI 同步 ===================== */
+function syncUI() {
+  $('#count').value = P.count; $('#countV').textContent = P.count;
+  $('#mult').value = P.mult;
+  $('#tStart').value = P.tStart; $('#tStartV').textContent = P.tStart + '%';
+  $('#tEnd').value = P.tEnd; $('#tEndV').textContent = P.tEnd + '%';
+  $('#tol').value = P.tol; $('#tolV').textContent = P.tol;
+  $('#soft').value = P.soft; $('#softV').textContent = P.soft;
+  $('#despill').value = P.despill; $('#despillV').textContent = P.despill;
+  $('#erode').value = P.erode; $('#erodeV').textContent = P.erode;
+  $('#align').value = P.align;
+  $('#offX').value = P.offX; $('#offXV').textContent = P.offX;
+  $('#offY').value = P.offY; $('#offYV').textContent = P.offY;
+  $('#pad').value = P.pad; $('#padV').textContent = P.pad;
+  $('#pxMode').value = P.pxMode;
+  $('#palette').value = P.palette;
+  $('#norm').value = P.norm;
+  $('#fps').value = P.fps; $('#fpsV').textContent = P.fps;
+  $('#onion').checked = P.onion;
+  $('#guides').checked = P.guides;
+  $('#loop').checked = P.loop;
+  $('#cols').value = P.cols;
+  $('#gap').value = P.gap;
+  $('#scale').value = P.scale;
+  $('#merge').checked = P.merge;
+  $('#fname').value = P.fname;
+  $('#mirror').checked = P.mirrorRight;
+  $('#btnGrid4').classList.toggle('on', P.grid4);
+  const lk = $('#link'); if (lk) lk.checked = P.link;
+  const segC = $('#segCmp');
+  if (segC) for (const b of segC.querySelectorAll('button'))
+    b.classList.toggle('on', b.dataset.cmp === P.cmpMode);
+  const segB = $('#segBg');
+  if (segB) for (const b of segB.querySelectorAll('button')) {
+    b.classList.toggle('on', b.dataset.bg === P.bg);
+    /* 纯色按钮上用色块代替字形：▦▤■□▣▧ 这几个符号在小字号下几乎分不出谁是谁 */
+    const i = b.firstElementChild;
+    if (i) {
+      const s = bgStyle(b.dataset.bg);
+      i.style.background = s.solid ? s.solid
+        : `repeating-conic-gradient(${s.a} 0 25%, ${s.b} 0 50%) 0 0/6px 6px`;
+    }
+  }
+  $('#swatch').style.background = `rgb(${P.key.join(',')})`;
+}
+
+/* ===================== 事件绑定 ===================== */
+function bind() {
+  $('#count').oninput = e => { P.count = +e.target.value; $('#countV').textContent = P.count; };
+  $('#count').onchange = () => buildAll({ resample:true, resetSeq:true });
+  $('#mult').onchange = e => { P.mult = +e.target.value; buildAll({ resample:true, resetSeq:true }); };
+  $('#tStart').oninput = e => { P.tStart = +e.target.value; $('#tStartV').textContent = P.tStart + '%'; };
+  $('#tEnd').oninput = e => { P.tEnd = +e.target.value; $('#tEndV').textContent = P.tEnd + '%'; };
+  $('#tStart').onchange = $('#tEnd').onchange = () => buildAll({ resample:true, resetSeq:true });
+  $('#btnResample').onclick = () => buildAll({ resample:true, resetSeq:true });
+
+  ['tol', 'soft', 'despill', 'erode'].forEach(k => {
+    const el = $('#' + k);
+    el.oninput = e => { P[k] = +e.target.value; $('#' + k + 'V').textContent = P[k]; };
+    el.onchange = () => buildAll({});
+  });
+
+  $('#align').onchange = e => { P.align = e.target.value; buildAll({}); };
+  ['offX', 'offY', 'pad'].forEach(k => {
+    const el = $('#' + k);
+    el.oninput = e => { P[k] = +e.target.value; $('#' + k + 'V').textContent = P[k]; };
+    el.onchange = () => buildAll({});
+  });
+  $('#pxMode').onchange = e => { P.pxMode = e.target.value; buildAll({}); };
+  $('#palette').onchange = e => { P.palette = +e.target.value; buildAll({}); };
+  $('#norm').onchange = e => { P.norm = e.target.value; buildAll({}); };
+
+  $('#fps').oninput = e => { P.fps = +e.target.value; $('#fpsV').textContent = P.fps; };
+  $('#onion').onchange = e => { P.onion = e.target.checked; drawPreview(); };
+  $('#guides').onchange = e => { P.guides = e.target.checked; drawPreview(); };
+  $('#loop').onchange = e => { P.loop = e.target.checked; };
+  $('#btnGrid4').onclick = () => { P.grid4 = !P.grid4; syncUI(); renderCandidates(); };
+  $('#link').onchange = e => { P.link = e.target.checked; syncUI(); };
+  /* 预览布局：单方向 / 四方向 2×2 / 四方向横排。
+     四方向同屏时 zCmp 会取四个面板里最小的缩放，所以高矮差、步幅差是
+     按同一把尺子量的 —— 这正是「一起看」的用处。 */
+  const setCmp = m => {
+    if (!m || P.cmpMode === m) return;
+    P.cmpMode = m;
+    syncUI();
+    $('#pwrap').dataset.key = '';   // 强制重建面板 DOM（1×4 与 2×2 的网格不同）
+    drawPreview();
+  };
+  $('#segCmp').onclick = e => {
+    const b = e.target.closest('button[data-cmp]');
+    if (!b) return;
+    setCmp(b.dataset.cmp);
+    const live4 = live().length;
+    if (P.cmpMode !== 'focus' && live4 < 2) toast('只有一个方向有素材，四方向视图只会画一格');
+  };
+  $('#segBg').onclick = e => {
+    const b = e.target.closest('button[data-bg]');
+    if (!b) return;
+    P.bg = b.dataset.bg;
+    syncUI();
+    drawPreview();
+  };
+  // 1 / 2 / 3 切布局（输入框里不拦，否则打数字就打不进去）
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const tg = e.target;
+    if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'SELECT' || tg.tagName === 'TEXTAREA')) return;
+    if (e.key === '1') setCmp('focus');
+    else if (e.key === '2') setCmp('2x2');
+    else if (e.key === '3') setCmp('1x4');
+  });
+
+  $('#btnPlay').onclick = togglePlay;
+  $('#btnPrev').onclick = () => {
+    const n = tLen(); if (!n) return;
+    seqSel = (seqSel - 1 + n) % n; playIdx = seqSel;
+    renderTimeline(); drawPreview();
+  };
+  $('#btnNext').onclick = () => {
+    const n = tLen(); if (!n) return;
+    seqSel = (seqSel + 1) % n; playIdx = seqSel;
+    renderTimeline(); drawPreview();
+  };
+
+  $('#btnTlFill').onclick = fillSeq;
+  $('#btnTlFill2').onclick = fillSeq;
+  $('#btnTlClear').onclick = clearRows;
+  $('#btnTlRev').onclick = () => reverseRow(tr().id);
+  $('#btnTlDup').onclick = () => dupSlot(seqSel, tr().id);
+  $('#btnTlSync').onclick = autoAlignPhase;
+
+  $('#btnAlignPhase').onclick = autoAlignPhase;
+  $('#btnResetPhase').onclick = resetPhase;
+
+  $('#mirror').onchange = e => {
+    const on = e.target.checked;
+    const L = tOf('left'), R = tOf('right');
+    if (on && !(L.video || L.images)) return toast('镜像需要先载入「左」方向', true), (e.target.checked = false);
+    if (!R.__bak) R.__bak = { video:R.video, url:R.url, images:R.images, duration:R.duration, vw:R.vw, vh:R.vh, times:R.times };
+    P.mirrorRight = on;
+    if (on) {
+      R.raw = []; R.keyed = []; R.frames = []; R.mirrorSig = ''; R.frozen = true; R.dirty = false;
+    } else {
+      if (R.__bak) { Object.assign(R, R.__bak); R.__bak = null; }
+      R.frozen = false; R.raw = []; R.keyed = []; R.frames = []; R.dirty = true;
+    }
+    P.mirrorRight = on;
+    buildAll({ resample:!on, resetSeq:false });
+    toast(on ? '右向已由左向翻转' : '右向恢复原素材');
+  };
+
+  $('#btnDemo4').onclick = loadQuadDemo;   // 「载入素材」
+  $('#btnDemo').onclick = loadDemo;
+  $('#btnClear').onclick = () => {
+    tracks.forEach(t => {
+      if (t.url) URL.revokeObjectURL(t.url);
+      Object.assign(t, { video:null, url:null, images:null, raw:[], keyed:[], scaled:[], frames:[],
+                         extras:[], nExtra:0,
+                         dirty:true, frozen:false, mirrorSig:'', stat:null, gait:null });
+    });
+    for (const d of DIRS) seqs[d.id] = [];
+    seqSel = 0;
+    G = Object.assign(G, { outW:0, outH:0, palN:0 });
+    renderAll();
+  };
+
+  const drop = $('#drop'), file = $('#file'), filePng = $('#filePng');
+  drop.onclick = () => file.click();
+  file.onchange = e => { if (e.target.files.length) handleFiles(e.target.files); file.value = ''; };
+  filePng.onchange = e => {
+    if (e.target.files.length) handleFiles(e.target.files, 'extra');
+    filePng.value = '';
+  };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+
+  $('#btnImport').onclick = () => file.click();
+  const pickPng = () => filePng.click();
+  $('#btnPngAdd').onclick = pickPng;
+  $('#btnPngAdd2').onclick = pickPng;
+  $('#btnExtraClear').onclick = clearExtras;
+
+  /* 直接拖到候选区 = 追加 PNG（拖到左侧素材框 = 换素材，两边语义不同） */
+  const gridBox = $('#grid').parentElement;
+  ['dragenter','dragover'].forEach(ev => gridBox.addEventListener(ev, e => {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+    e.preventDefault(); gridBox.classList.add('over');
+  }));
+  ['dragleave','drop'].forEach(ev => gridBox.addEventListener(ev, e => {
+    e.preventDefault(); gridBox.classList.remove('over');
+  }));
+  gridBox.addEventListener('drop', e => {
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files, 'extra');
+  });
+
+  $('#btnVidLoad').onclick = () => loadVideoVersion($('#vidSel').value);
+
+  $('#btnPick').onclick = () => {
+    if (!live().length) return toast('先载入素材', true);
+    picking = !picking;
+    $('#btnPick').style.color = picking ? 'var(--acc)' : '';
+    $('#pwrap').dataset.key = '';
+    drawPreview();
+  };
+  $('#pwrap').addEventListener('click', e => {
+    if (!picking) return;
+    const cv = e.target.closest('.pv') && e.target.closest('.pv').querySelector('canvas');
+    if (cv) pickColorFromCanvas(cv, e);
+  });
+
+  $('#cols').onchange = e => { P.cols = +e.target.value; };
+  $('#gap').onchange = e => { P.gap = +e.target.value; };
+  $('#scale').onchange = e => { P.scale = +e.target.value; };
+  $('#merge').onchange = e => { P.merge = e.target.checked; };
+  $('#fname').oninput = e => { P.fname = e.target.value || 'walk'; };
+  $('#btnPng').onclick = exportSheet;
+  $('#btnJson').onclick = exportJson;
+  $('#mClose').onclick = () => $('#modal').classList.remove('on');
+  $('#mSave').onclick = downloadSheet;
+  $('#mJson').onclick = exportJson;
+  $('#modal').onclick = e => { if (e.target.id === 'modal') $('#modal').classList.remove('on'); };
+
+  $('#btnHelp').onclick = () => toast('① 载入四方向素材 → ② 抽候选 → ③ 点候选帧拼时间轴 → ④ 对齐相位 → ⑤ 导出');
+
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input,select,textarea')) return;
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+    if (e.code === 'ArrowLeft') { e.preventDefault(); $('#btnPrev').click(); }
+    if (e.code === 'ArrowRight') { e.preventDefault(); $('#btnNext').click(); }
+    if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); delSlot(seqSel); }
+  });
+
+  window.addEventListener('resize', () => { $('#pwrap').dataset.key = ''; drawPreview(); });
+}
+
+/* ===================== 调试钩子 ===================== */
+window.__tracks = tracks;
+window.__P = P;
+window.__G = () => G;
+window.__seq = () => seqs;
+window.__phase = () => Object.fromEntries(live().map(t => [t.id, candAt(t.id, 0) || 0]));
+window.__handleFiles = handleFiles;
+window.__setSeq = o => { for (const k in o) seqs[k] = o[k]; renderAll(); };
+
+/* ===================== 启动 ===================== */
+bind();
+syncUI();
+renderAll();
+$('#env').textContent = location.protocol === 'file:' ? '需要 http 服务' : 'local';
+
+const q = new URLSearchParams(location.search);
+/* ?cmp=focus|2x2|1x4   ?bg=dcheck|lcheck|black|white|gray|magenta
+   写进 URL 是为了把「我正在四方向对比 + 白底」这个状态直接发给别人。 */
+if (['focus', '2x2', '1x4'].includes(q.get('cmp'))) P.cmpMode = q.get('cmp');
+if (q.get('bg') && bgStyle(q.get('bg')).id === q.get('bg')) P.bg = q.get('bg');
+if (HAS_DEMO) loadQuadDemo();
+else if (q.has('demo')) loadDemo();
+if (VIDEO_BASE) {
+  loadVideoIndex().then(js => {
+    if (!js) return toast('?videos= 指过去没有 index.json', true);
+    VID_INDEX = js;
+    renderVidChooser(js);
+  });
+}
+if (q.has('sheet')) setTimeout(exportSheet, 3000);
+</script>
+</body>
+</html>
