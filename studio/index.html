@@ -86,6 +86,15 @@
   .btn:hover{color:var(--txt);border-color:#3a4453}
   .btn.wide{width:100%}
   .btn.on{color:var(--acc);border-color:rgba(95,211,154,.45);background:rgba(95,211,154,.1)}
+  /* 纯图标按钮：文字按钮旁边夹一个图标，靠 svg 而不是字形，
+     免得在等宽字体 / 中文字体回退上变成豆腐块。 */
+  .btn.icon{display:inline-grid;place-items:center;padding:4px 5px;line-height:0}
+  .btn.icon svg{display:block}
+  /* 图标跟着状态翻转：未展开是「向外张」，展开后是「向内收」（点一下收回去）。
+     只有一个图标的按钮，状态不能只靠颜色说。 */
+  .btn .p-in{display:none}
+  .btn.on .p-in{display:inline}
+  .btn.on .p-out{display:none}
   .btn:disabled{opacity:.35;cursor:not-allowed}
   .drop{
     border:1.5px dashed #2f3846;border-radius:8px;padding:7px 8px;text-align:center;
@@ -264,6 +273,72 @@
   .striphead{display:flex;align-items:center;gap:7px;padding:9px 12px 6px}
   .striphead b{font-size:12px}
   .striphead .n{font-family:var(--mono);font-size:11px;color:var(--acc);margin-left:2px}
+  /* 候选帧的点击模式。两种模式的差别只在「点一下干什么」，所以控件必须
+     紧贴帧格 —— 塞进底部时间轴那排按钮里，点错模式是要靠猜的。 */
+  .pickbar{display:flex;align-items:center;gap:6px;padding:0 12px 7px}
+  .pickbar .lb{font-family:var(--mono);font-size:9.5px;color:#5d6675;flex:0 0 auto}
+  .seg.pk{flex:1 1 auto}
+  .seg.pk button{flex:1 1 0;min-width:0;font-family:inherit;font-size:11px;letter-spacing:0;padding:4px 3px}
+
+  /* ---------- 多方向墙：候选池扩成「一个方向两列」----------
+     单栏一次只能看一个方向，「第 7 帧是不是同一姿势」要靠来回切方向记在脑子里。
+     墙把四个方向按候选序号横向对齐，行 = 时刻，列 = 方向（每向两列）。
+     左边「素材与参数」在挑帧阶段没用，让位给候选池；预览仍然留在中间。 */
+  body.wall main{grid-template-columns:288px minmax(280px,1fr) clamp(680px,55vw,1200px)}
+  /* 墙头已经带了方向名 + 帧/槽数，还自带切换，顶上的方向大按钮就是重复的
+     一屏高度 —— 收掉，把纵向空间还给帧格。 */
+  body.wall .dirbar{display:none}
+  .grid.wall{display:block;padding:0 10px 14px}
+  .wallhead{
+    display:grid;gap:14px;position:sticky;top:0;z-index:6;
+    padding:2px 0 6px;background:var(--panel);justify-items:center;
+  }
+  .wallhead .wh{
+    display:flex;flex-direction:column;align-items:center;gap:0;padding:4px 2px 3px;
+    border-radius:6px;border:1px solid transparent;cursor:pointer;line-height:1.25;
+    font-size:11px;color:var(--mut);width:100%;max-width:349px;
+  }
+  .wallhead .wh b{font-weight:600;font-size:11.5px}
+  .wallhead .wh span{font-family:var(--mono);font-size:8.5px;color:#5d6675;letter-spacing:-.2px}
+  .wallhead .wh:hover{background:var(--panel2)}
+  .wallhead .wh.on{background:rgba(95,211,154,.13);border-color:rgba(95,211,154,.5);color:var(--acc)}
+  .wallhead .wh.on span{color:var(--acc2)}
+  /* 组内 5px / 组间 14px，再加一条极淡的竖线 —— 光靠间距差，八列排在一起
+     很难一眼看出哪两列是一个方向。竖线用伪元素画在 gap 里，不占轨道宽度，
+     所以各组列宽仍然严格相等（列宽不等 = 行高不等 = 跨组行对齐失效）。 */
+  .wallgrid{display:grid;gap:14px;align-items:start;justify-items:center}
+  .wallgroup{
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;
+    align-content:start;justify-items:center;width:100%;max-width:349px;
+    position:relative;
+  }
+  .wallgroup + .wallgroup::before{
+    content:'';position:absolute;left:-7px;top:0;bottom:0;width:1px;
+    background:linear-gradient(#1b2230,#232c3a 12%,#232c3a 88%,#1b2230);
+  }
+  /* 只载入一两个方向时，1fr 会把那唯一一组拉成整块 600px 的大图 ——
+     既难看也没信息量。组封顶 + 居中，方向少的时候就留白。 */
+  .grid.wall .cell{width:100%;max-width:172px;aspect-ratio:1}
+  .grid.wall .cell canvas{width:100%;height:100%}
+  /* 墙里的角标要缩：130px 的格子挂四个角标就糊成一片了 */
+  .grid.wall .cell .idx{font-size:8px;padding:0 2px;left:2px;top:1px}
+  /* 墙里同一格上会同时出现两个数字（左上=候选号，右下=时间轴槽号）。
+     两个都染成绿色就分不清谁是谁了，所以这一档让候选号保持中性色。 */
+  .grid.wall .cell.intl .idx{background:rgba(0,0,0,.72);color:#94a0b0;font-weight:400}
+  .grid.wall .cell .ct{font-size:9px;padding:0 1px;right:2px;top:0;line-height:1.25}
+  .grid.wall .cell .tm{display:none}
+  .grid.wall .cell .ex{font-size:8px;padding:0 1px;left:2px;bottom:1px}
+  /* 墙里格子 86px：角标只留数字/符号，汉字在这个尺寸会糊成墨块 */
+  .grid.wall .cell .used{
+    font-size:8px;padding:0 2px;right:2px;bottom:1px;line-height:1.35;
+  }
+  .grid.wall .wph{border:1.5px dashed #1e242e;border-radius:7px;aspect-ratio:1;width:100%;max-width:172px}
+  /* 窄窗口下八列会把中间的预览挤没：这时把左栏（素材与参数）让出去。
+     挑帧阶段用不到它，等收回去再调参数。 */
+  @media (max-width:1360px){
+    body.wall main{grid-template-columns:minmax(240px,1fr) clamp(520px,58vw,1200px)}
+    body.wall .col.left{display:none}
+  }
   .hint{font-size:10px;color:#5d6675;padding:0 12px 7px;line-height:1.6}
   .grid{display:grid;gap:6px;padding:0 12px 14px}
   .grid.g4{grid-template-columns:1fr}
@@ -289,6 +364,15 @@
   .grid.g1.ref .cell .tm{right:3px;bottom:auto;top:3px}
   .cell:hover{border-color:#4a5a72}
   .cell.intl{border-color:rgba(95,211,154,.85);box-shadow:0 0 0 1px rgba(95,211,154,.45)}
+  /* 顺序选帧模式下的「已选中」：比 intl 再重一档。
+     插入模式里一帧可能占好几个槽，绿色角标说明的是「用了几次」；
+     顺序模式里它只有「选了 / 没选」两态，需要一眼能扫出勾选范围。 */
+  .cell.picked{border-color:var(--acc);box-shadow:0 0 0 2px rgba(95,211,154,.32)}
+  .cell.picked .used{background:var(--acc);font-size:9px;padding:0 4px}
+  /* 顺序模式：拖动 / 反序 / 复制末帧都不成立，光标和按钮明着说「这里不能动」，
+     比点了才弹「不支持」要好。 */
+  body.pkseq .tslot{cursor:pointer}
+  body.pkseq #btnTlRev, body.pkseq #btnTlDup{opacity:.42}
   .cell canvas{display:block;image-rendering:pixelated}
   .grid.g1 .cell canvas{width:100%;height:100%}
   .grid.g4 .cell canvas{width:100%;height:auto}
@@ -645,11 +729,25 @@
     </div>
     <div class="striphead">
       <b>候选帧</b><span class="n" id="candN">0</span>
+      <button class="btn icon" id="btnWall" title="展开：四个方向各两列并排挑帧（同一行 = 同一对候选序号）。点哪一列就编辑哪一列；点击模式各列共用">
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path class="p-out" d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/>
+          <path class="p-in" d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4"/>
+        </svg>
+      </button>
       <div class="spacer"></div>
       <button class="btn" id="btnExtraClear" style="display:none"
               title="移除手工追加的 PNG，只留从素材抽出来的帧">清附加</button>
       <button class="btn" id="btnPngAdd2" title="PNG 逐张追加到当前方向的候选池末尾">＋PNG</button>
       <button class="btn" id="btnGrid4" title="每格右边附一条其它方向的参考小图（只是对照，不会加错方向）">参考</button>
+    </div>
+    <div class="pickbar">
+      <span class="lb">点击模式</span>
+      <div class="seg pk" id="segPick" title="候选帧点一下到底做什么">
+        <button data-pk="seq" title="顺序选帧：点一帧 = 选中（自动排到候选顺序的位置），再点一次 = 取消。同一帧只出现一次，时间轴严格按候选顺序排">顺序选帧</button>
+        <button data-pk="insert" title="插入选帧：点一帧就插到光标后面。同一帧可以反复插入、顺序随意调 —— 拼停顿、二段跳这类重复姿势用这个">插入选帧</button>
+      </div>
     </div>
     <div class="hint" id="candHint">
       <b>点一下</b> 追加到当前方向 · <b>Alt+点</b> 替换选中槽 · <b>Shift+点</b> 插入<br>
@@ -757,7 +855,10 @@ const P = {
   // link   = 点一帧四行一起加（默认关：先专心拼一个方向）
   // cmpMode= focus 只看当前方向 / 2x2 四方向网格 / 1x4 四方向横排
   // bg     = 预览底板（棋盘判断透明，纯色判断实际观感，洋红查杂边）
-  mirrorRight: false, link: false, cmpMode: 'focus', bg: 'dcheck',
+  // pick   = 候选帧点一下干什么：seq 顺序选帧 / insert 插入选帧（默认，老行为）
+  // wall   = 候选池扩成多方向墙（每向两列并排，点哪个方向的列就编辑哪个方向）
+  mirrorRight: false, link: false, cmpMode: 'focus', bg: 'dcheck', pick: 'insert',
+  wall: false,
 };
 
 let G = { s:1, f:0, px:0, py:0, cellW:0, cellH:0, outW:0, outH:0, pad:0,
@@ -1551,13 +1652,19 @@ function normalizeSeq(reset) {
   if (!ls.length) { for (const d of DIRS) seqs[d.id] = []; seqSel = 0; return; }
   if (reset || !tLen()) {
     const n = Math.max(2, P.count | 0);
-    for (const t of ls) fillRow(t, Math.min(n, Math.max(2, t.frames.length)));
+    for (const t of ls) {
+      fillRow(t, Math.min(n, Math.max(2, t.frames.length)));
+      /* 顺序模式下「铺满」会把同一个候选塞进好几槽，和勾选语义冲突：
+         直接压成这一整步里用到的那些候选（去重 + 升序）。 */
+      if (P.pick === 'seq') seqFixRow(t);
+    }
     seqSel = 0;
     return;
   }
   for (const t of ls) {
     const a = arrOf(t.id);
     for (let i = 0; i < a.length; i++) a[i] = wrapIdx(a[i] | 0, t.frames.length);
+    if (P.pick === 'seq') seqFixRow(t);   // 重采样会换掉帧号，勾选状态跟着重新压实
   }
   if (seqSel >= tLen()) seqSel = Math.max(0, tLen() - 1);
 }
@@ -1570,7 +1677,9 @@ function fillSeq() {
   if (!targets.length) return;
   for (const t of targets) fillRow(t, Math.min(Math.max(2, P.count | 0), Math.max(2, t.frames.length)));
   seqSel = 0; playIdx = 0;
-  renderTimeline(); renderCandidates(); drawPreview(); renderConsistency(); renderGait();
+  /* 走 redrawTl 而不是逐块重绘：顺序模式要在渲染前把「铺满」产生的
+     重复候选压掉，重绘入口是唯一保证这一步不会被漏掉的地方。 */
+  redrawTl();
 }
 
 /* ===================== 渲染：预览 ===================== */
@@ -1806,53 +1915,132 @@ function thumbOf(f, size) {
   return c;
 }
 
+/* 一个候选格的 DOM。单栏池和多方向墙共用 —— 两套渲染各写一遍，
+   改配色或加角标时必然走偏。compact = 墙里的窄格（空间小，只留必要的角标）。 */
+function candCell(t, i, usedAt, compact) {
+  const seq = P.pick === 'seq';
+  const gait = t.gait || {};
+  const nEx = t.nExtra || 0;
+  const nSampled = t.frames.length - nEx;
+  const slots = usedAt.get(i);
+
+  const cell = document.createElement('div');
+  cell.className = 'cell' + (slots ? ' intl' : '') + (seq && slots ? ' picked' : '');
+
+  cell.appendChild(thumbOf(t.frames[i], compact ? 96 : 128));
+
+  const idx = document.createElement('span');
+  idx.className = 'idx'; idx.textContent = i + 1;
+  cell.appendChild(idx);
+
+  if (gait.contact === i) {
+    const ct = document.createElement('span');
+    ct.className = 'ct';
+    /* 墙里格子只有 86px，「接触」两个汉字在这个尺寸会糊成一团墨点，
+       所以降级成一个橙色圆点（同一个橙色，旁边步态面板里有全称）。 */
+    ct.textContent = compact ? '●' : '接触';
+    ct.title = '接触帧（这一帧脚着地）';
+    cell.appendChild(ct);
+  }
+
+  /* 从视频抽出来的帧，右下角标时间戳（挑帧时对拍用）；
+     图片序列没有时间轴可言，标出来只会和左上角的帧号重复。 */
+  if (t.video && i < t.raw.length) {
+    const tm = document.createElement('span');
+    tm.className = 'tm';
+    const tv = t.times && t.times[i] !== undefined ? t.times[i] : (i / Math.max(1, t.frames.length));
+    tm.textContent = (tv * (t.duration || 1)).toFixed(2) + 's';
+    cell.appendChild(tm);
+  }
+
+  if (i >= nSampled) {
+    const ex = document.createElement('span');
+    ex.className = 'ex';
+    ex.textContent = compact ? '+' : '附加';
+    ex.title = '手工导入的 PNG（不参与步态分析）';
+    cell.appendChild(ex);
+  }
+
+  if (slots) {
+    const u = document.createElement('span');
+    u.className = 'used';
+    /* 顺序模式里「被用在哪一槽」不再重要（顺序是候选人自己排的），
+       换成勾号 + 槽号：勾号是取舍状态，槽号是它在时间轴上的位置。
+       墙里格子只有 86px：去掉「槽」字、也去掉 ✓（8px 下这个符号根本
+       渲染不出来，绿边 + 绿角标已经说明它被选中了），只留槽号。 */
+    u.textContent = compact
+      ? slots.slice(0, 2).join(',') + (slots.length > 2 ? '…' : '')
+      : (seq ? `✓ ${slots[0]}`
+          : (slots.length > 3 ? `槽 ${slots[0]}…` : '槽 ' + slots.join(',')));
+    u.title = '这一帧被用在时间轴第 ' + slots.join('、') + ' 槽';
+    cell.appendChild(u);
+  }
+
+  cell.title = `${t.label}向 候选 #${i + 1}` +
+    (seq ? (slots ? ' · 已选中，再点取消' : ' · 点一下选中') : '');
+  cell.onclick = e => {
+    /* 墙里点哪一列就是编辑哪一列：先把当前方向切过去，预览和时间轴
+       高亮立刻跟上，不用先点上面的方向按钮再回来点帧。 */
+    const di = DIRS.findIndex(d => d.id === t.id);
+    if (di !== active) { active = di; renderDirbar(); }
+    if (seq) { togglePick(i); lastClicked = i; return; }
+    if (e.altKey || e.metaKey) replaceSlot(i);
+    else if (e.shiftKey) insertSlot(i);
+    else appendSlot(i);
+    lastClicked = i;
+  };
+  return cell;
+}
+
+function usedMap(id) {
+  const m = new Map();
+  arrOf(id).forEach((ci, si) => {
+    if (!m.has(ci)) m.set(ci, []);
+    m.get(ci).push(si + 1);
+  });
+  return m;
+}
+
 function renderCandidates() {
   const grid = $('#grid');
   const t = tr();
   const any = live();
   const has = t.frames.length > 0;
 
-  /* 候选池永远只显示「当前方向」的帧。以前默认四方向并排成一格（4D），
-     一屏四张小图，点哪张都不确定往哪一行加 —— 这就是「候选帧每次都是
-     四个方向一起的」的来源。现在一个方向一个池子，切方向靠上面的四个大按钮。 */
-  grid.className = 'grid g1' + (P.grid4 ? ' ref' : '');
-  grid.innerHTML = '';
-  $('#gridEmpty').style.display = has ? 'none' : 'block';
   const nEx = t.nExtra || 0;
   const exTxt = nEx ? ` <span class="mono" style="color:#9d8bff">(+${nEx} 附加)</span>` : '';
   $('#focusTxt').innerHTML = has
-    ? `正在拼：<b>${t.label}向</b> <span class="mono">· 候选 ${t.frames.length}${nEx ? `（含 ${nEx} 附加）` : ''} · 已用 ${lenOf(t.id)} 槽</span>${exTxt}`
+    ? `正在拼：<b>${t.label}向</b> <span class="mono">· 候选 ${t.frames.length}${nEx ? `（含 ${nEx} 附加）` : ''} · 已用 ${lenOf(t.id)} 槽${P.wall ? ' · 每向两列' : ''}</span>${exTxt}`
     : `正在看：<b>${t.label}向</b> <span class="mono">· 还没有素材</span>`;
   $('#focusSlots').textContent = has ? `${lenOf(t.id)} 槽` : '0 槽';
   $('#btnExtraClear').style.display = nEx ? '' : 'none';
-  if (!has) { $('#candN').textContent = '0'; return; }
+
+  if (P.wall) return renderWall(any);
+
+  $('#gridEmpty').style.display = has ? 'none' : 'block';
+  if (!has) { $('#grid').className = 'grid g1'; grid.innerHTML = ''; $('#candN').textContent = '0'; return; }
+
+  /* 候选池永远只显示「当前方向」的帧。以前默认四方向并排成一格（4D），
+     一屏四张小图，点哪张都不确定往哪一行加 —— 这就是「候选帧每次都是
+     四个方向一起的」的来源。现在一个方向一个池子，切方向靠上面的四个大按钮。
+     想看四个方向一起挑就开「多方向墙」。 */
+  grid.className = 'grid g1' + (P.grid4 ? ' ref' : '');
+  grid.innerHTML = '';
 
   const n = t.frames.length;
   $('#candN').textContent = n;
-  const nSampled = n - nEx;      // 附加帧排在末尾，用它分界打角标
-
-  /* 每个候选被放在时间轴的第几槽（同一帧可以重复用，所以是列表） */
-  const usedAt = new Map();
-  arrOf(t.id).forEach((ci, si) => {
-    if (!usedAt.has(ci)) usedAt.set(ci, []);
-    usedAt.get(ci).push(si + 1);
-  });
-
+  const usedAt = usedMap(t.id);
   const others = any.filter(q => q !== t);
-  const gait = t.gait || {};
 
   for (let i = 0; i < n; i++) {
-    const cell = document.createElement('div');
-    const slots = usedAt.get(i);
-    cell.className = 'cell' + (slots ? ' intl' : '');
-
-    const thumb = thumbOf(t.frames[i], 128);
+    const cell = candCell(t, i, usedAt, false);
+    /* 参考模式：每格右边附一条其它方向的同序号小图（只在单栏里做，
+       墙里四个方向本来就并排了，再附一次是纯噪声）。 */
     if (P.grid4 && others.length) {
       const main = document.createElement('div');
       main.className = 'main';
-      main.appendChild(thumb);
-      cell.appendChild(main);
-
+      main.appendChild(cell.querySelector('canvas'));
+      cell.insertBefore(main, cell.firstChild);
       const refs = document.createElement('div');
       refs.className = 'refs';
       for (const q of others) {
@@ -1866,56 +2054,74 @@ function renderCandidates() {
         refs.appendChild(fig);
       }
       cell.appendChild(refs);
-    } else {
-      cell.appendChild(thumb);
     }
-
-    const idx = document.createElement('span');
-    idx.className = 'idx'; idx.textContent = i + 1;
-    cell.appendChild(idx);
-
-    if (gait.contact === i) {
-      const ct = document.createElement('span');
-      ct.className = 'ct'; ct.textContent = '接触';
-      cell.appendChild(ct);
-    }
-
-    /* 从视频抽出来的帧，右下角标时间戳（挑帧时对拍用）；
-       图片序列没有时间轴可言，标出来只会和左上角的帧号重复。 */
-    if (t.video && i < t.raw.length) {
-      const tm = document.createElement('span');
-      tm.className = 'tm';
-      const tv = t.times && t.times[i] !== undefined ? t.times[i] : (i / Math.max(1, n));
-      tm.textContent = (tv * (t.duration || 1)).toFixed(2) + 's';
-      cell.appendChild(tm);
-    }
-
-    if (i >= nSampled) {
-      const ex = document.createElement('span');
-      ex.className = 'ex';
-      ex.textContent = '附加';
-      ex.title = '手工导入的 PNG（不参与步态分析）';
-      cell.appendChild(ex);
-    }
-
-    if (slots) {
-      const u = document.createElement('span');
-      u.className = 'used';
-      u.textContent = slots.length > 3 ? `槽 ${slots[0]}…` : '槽 ' + slots.join(',');
-      u.title = '这一帧被用在时间轴第 ' + slots.join('、') + ' 槽';
-      cell.appendChild(u);
-    }
-
-    cell.title = `${t.label}向 候选 #${i + 1}`;
-    cell.onclick = e => {
-      if (e.altKey || e.metaKey) replaceSlot(i);
-      else if (e.shiftKey) insertSlot(i);
-      else appendSlot(i);
-      lastClicked = i;
-    };
     grid.appendChild(cell);
   }
 }
+
+/* 多方向墙：四个方向各一列，同一行 = 同一候选序号 = 同一时刻。
+   存在的理由是「挑帧时最需要横向对照」—— 前视的第 7 帧和后视的第 7 帧
+   是不是同一个姿势，只有并排才看得出来。墙内一次点击改的是它自己那一列。 */
+function renderWall(any) {
+  const grid = $('#grid');
+  const cols = DIRS.filter(d => tOf(d.id).frames.length);
+  grid.className = 'grid wall';
+  grid.innerHTML = '';
+  $('#candN').textContent = cols.reduce((s, d) => s + tOf(d.id).frames.length, 0);
+  $('#gridEmpty').style.display = cols.length ? 'none' : 'block';
+  if (!cols.length) return;
+
+  const maxN = Math.max(...cols.map(d => tOf(d.id).frames.length));
+
+  /* 一个方向两列：第 i 行放第 2i、2i+1 个候选。行数直接减半，一屏能扫到
+     两倍的帧，而「同一行 = 同一对候选」在四个方向上仍然严格对齐 —— 横着
+     扫一眼就能对拍「前视第 7 帧 / 后视第 7 帧」。
+     不用「前半段一列、后半段一列」的分段式：各方向帧数不等时，那会让帧
+     少的方向第二列整列空着（R 取全局一半时），或者让行对齐失效（R 各算
+     各的）。交错式两头都不占。 */
+  const rows = Math.ceil(maxN / 2);
+  const tpl = `repeat(${cols.length},minmax(0,1fr))`;
+
+  /* 表头单独一行：方向名 + 帧/槽数，横向跨住该方向的两列。点表头切当前
+     方向（时间轴高亮、预览跟着走），不改变任何数据。 */
+  const head = document.createElement('div');
+  head.className = 'wallhead';
+  head.style.gridTemplateColumns = tpl;
+  for (const d of cols) {
+    const t = tOf(d.id);
+    const b = document.createElement('div');
+    b.className = 'wh' + (d.id === tr().id ? ' on' : '');
+    b.innerHTML = `<b>${d.label}</b><span>${t.frames.length}帧·${lenOf(d.id)}槽</span>`;
+    b.onclick = () => { if (d.id !== tr().id) { active = DIRS.findIndex(x => x.id === d.id); renderAll(); } };
+    head.appendChild(b);
+  }
+  grid.appendChild(head);
+
+  /* 每个方向一个独立的两列小网格：组内 5px、组间 10px，靠间距本身分组，
+     不用画分割线。各组列宽相同 ⇒ 方块等高 ⇒ 各行天然齐平。 */
+  const body = document.createElement('div');
+  body.className = 'wallgrid';
+  body.style.gridTemplateColumns = tpl;
+  for (const d of cols) {
+    const t = tOf(d.id);
+    const g = document.createElement('div');
+    g.className = 'wallgroup';
+    const map = usedMap(d.id);
+    /* 补占位补到 rows*2 格：帧数少的方向不会把同组另一列带歪，也不会让
+       它后面的组在纵向错开。 */
+    for (let i = 0; i < rows * 2; i++) {
+      if (i < t.frames.length) g.appendChild(candCell(t, i, map, true));
+      else {
+        const ph = document.createElement('div');
+        ph.className = 'wph';
+        g.appendChild(ph);
+      }
+    }
+    body.appendChild(g);
+  }
+  grid.appendChild(body);
+}
+
 
 /* ===================== 时间轴操作 ===================== */
 /* 点候选帧 → 落到时间轴。联动时四方向一起加，但每个方向加的是「自己节奏里的
@@ -1947,6 +2153,124 @@ function appendSlot(base)  { addFrame(base, tr(), 'append'); }
 function insertSlot(base)  { addFrame(base, tr(), 'insert'); }
 function replaceSlot(base) { addFrame(base, tr(), 'replace'); }
 
+/* ===================== 候选帧的两种点击模式 =====================
+   seq    = 顺序选帧：把候选池当勾选清单用。点一帧 = 选中，再点 = 取消；
+            时间轴里的顺序永远等于候选池顺序，一个候选只占一槽。
+            「挑哪几帧」和「排成什么顺序」被压成同一个动作，所以不用管
+            光标停在哪一槽 —— 这正是逐帧挑姿态时想要的心智模型。
+   insert = 插入选帧：老行为。点一帧插到光标后面，同一帧可以插多次、
+            顺序可以拖。拼停顿（hold）、二段跳这类重复姿势只能靠它。
+
+   两种模式共用 seqs 这一份数据，没有第二套真相：顺序模式下的「选中」
+   就等于「该候选出现在这一行里」，所以绿色勾号和时间轴永远一致，
+   导出、预览、联动全都不需要改。
+   ============================================================= */
+
+/* 顺序模式的行不变量：候选序号升序 + 不重复。
+   依次填满 / 反序 / 复制末帧 / 相位换算 / 切模式都可能写坏它，
+   所以统一在 redrawTl 入口压实一次，而不是给每个入口打补丁。 */
+function seqFixRow(t) {
+  const a = arrOf(t.id);
+  if (!a.length) return false;
+  const u = [...new Set(a)].sort((x, y) => x - y);
+  if (u.length === a.length && u.every((v, i) => v === a[i])) return false;
+  a.length = 0;
+  for (const v of u) a.push(v);
+  return true;
+}
+function seqFixAll() {
+  let ch = false;
+  for (const t of live()) ch = seqFixRow(t) || ch;
+  return ch;
+}
+
+/* 顺序模式的一次点击：选中 / 取消。选中时按候选序号插到它该在的位置，
+   所以最终顺序天然就是候选池顺序，与点击先后无关。 */
+function togglePick(base) {
+  const t = tr();
+  if (!t || !t.frames.length) return;
+  const idx = wrapIdx(base, t.frames.length);
+  const on = arrOf(t.id).includes(idx);          // 再点一次 = 取消
+  const u = uOf(t, idx);
+  const targets = P.link ? live() : [t];
+  for (const q of targets) {
+    /* 联动时其它方向取「自己节奏里的同一时刻」，和 addFrame 的换算一致 */
+    const v = q === t ? idx : wrapIdx(idxAtU(q, u), q.frames.length);
+    const a = arrOf(q.id);
+    const k = a.indexOf(v);
+    if (on) {
+      if (k >= 0) a.splice(k, 1);
+    } else if (k < 0) {
+      let at = 0;
+      while (at < a.length && a[at] < v) at++;
+      a.splice(at, 0, v);
+    }
+  }
+  const a = arrOf(t.id);
+  seqSel = on ? Math.max(0, Math.min(seqSel, a.length - 1))
+              : Math.max(0, a.indexOf(idx));
+  playIdx = seqSel;
+  redrawTl();
+}
+
+function setPickMode(m) {
+  if (!m || P.pick === m) return;
+  P.pick = m;
+  let before = 0, after = 0;
+  if (m === 'seq') {
+    /* 从插入模式切过来：已有行里同一个候选可能占好几槽，压成
+       「去重 + 按候选顺序」—— 否则勾选状态和行内容会互相打脸。 */
+    for (const t of live()) { before += lenOf(t.id); seqFixRow(t); after += lenOf(t.id); }
+  }
+  seqSel = Math.max(0, Math.min(seqSel, Math.max(0, tLen() - 1)));
+  playIdx = Math.min(playIdx, Math.max(0, tLen() - 1));
+  syncUI();
+  redrawTl();
+  if (m === 'seq') {
+    toast(before !== after
+      ? `顺序选帧：已按候选顺序重排，去掉 ${before - after} 个重复槽`
+      : '顺序选帧：点一帧选中、再点取消；时间轴严格按候选顺序排');
+  } else {
+    toast('插入选帧：点一帧插到光标后面，同一帧可以反复插入');
+  }
+}
+
+/* 提示文案跟着模式走 —— 两套操作里 Alt / Shift 修饰键的语义完全不同，
+   留着不改字就是明着骗人。墙里还要额外说清「点哪一列编辑哪一列」。 */
+function updateCandHint() {
+  const el = $('#candHint');
+  if (!el) return;
+  if (P.wall) {
+    el.innerHTML = P.pick === 'seq'
+      ? '<b>点哪一列的帧就编辑那个方向</b> · <b>再点一次</b> 取消选择<br>' +
+        '<span style="color:#4f5869">同一行 = 同一对候选序号 · 每组两列 · 顺序 = 候选池顺序 · 点击模式各列共用</span>'
+      : '<b>点哪一列的帧就编辑那个方向</b> · <b>Alt+点</b> 替换 · <b>Shift+点</b> 插入<br>' +
+        '<span style="color:#4f5869">同一行 = 同一对候选序号 · 每组两列 · 点击模式各列共用</span>';
+    return;
+  }
+  if (P.pick === 'seq') {
+    el.innerHTML = '<b>点一下</b> 选中这一帧 · <b>再点一次</b> 取消选择<br>' +
+      '<span style="color:#4f5869">顺序 = 候选池顺序（不能拖）· 一帧一槽 · ✓ 后面是槽号</span>';
+  } else {
+    el.innerHTML = '<b>点一下</b> 追加到当前方向 · <b>Alt+点</b> 替换选中槽 · <b>Shift+点</b> 插入<br>' +
+      '<span style="color:#4f5869">绿色角标 = 这一帧已被用在第几槽 · 紫色「附加」= 手工导入的 PNG</span>';
+  }
+}
+
+/* 展开候选池。宽度一变，中间预览的缩放基准也变了，所以要强制重建面板
+   （和 window resize 那条路径同一个做法）。
+   点击模式 P.pick 不跟着变 —— 需求就是所有列共用一套点击语义。 */
+function setWall(on) {
+  P.wall = !!on;
+  document.body.classList.toggle('wall', P.wall);
+  syncUI();
+  $('#pwrap').dataset.key = '';
+  renderCandidates();
+  drawPreview();
+  /* 滚到顶：切布局后若还停在原来的滚动位置，表头可能被顶到看不见的地方 */
+  $('.col.right').scrollTop = 0;
+}
+
 /* 删除 / 复制：作用在「这一行」上；联动开着时同槽号一起动，四行不会错位 */
 function delSlot(i, id) {
   const targets = P.link ? live() : [tOf(id || tr().id)].filter(Boolean);
@@ -1958,6 +2282,7 @@ function delSlot(i, id) {
   redrawTl();
 }
 function dupSlot(i, id) {
+  if (P.pick === 'seq') return toast('顺序选帧模式下同一帧只能出现一次 —— 需要重复姿势请切到「插入选帧」', true);
   const targets = P.link ? live() : [tOf(id || tr().id)].filter(Boolean);
   for (const t of targets) {
     const a = arrOf(t.id);
@@ -1967,6 +2292,7 @@ function dupSlot(i, id) {
   redrawTl();
 }
 function moveSlot(from, to, id) {
+  if (P.pick === 'seq') return toast('顺序选帧模式下顺序由候选池决定，不能拖动排序', true);
   const targets = P.link ? live() : [tOf(id || tr().id)].filter(Boolean);
   for (const t of targets) {
     const a = arrOf(t.id);
@@ -1991,6 +2317,11 @@ function clearRows() {
 
 /* 时间轴相关的重绘都走这里，避免各处漏掉某一块 */
 function redrawTl() {
+  /* 顺序选帧模式的收口点：所有改行的路径（勾选 / 依次填满 / 反序 /
+     复制末帧 / 步长微调 / 相位换算）最终都会走到这里，先压实
+     「升序 + 去重」再渲染，就不会出现某条冷门路径把不变量写坏。
+     顺序模式本身不产生重复和倒序，所以这里通常是个空转的比较。 */
+  if (P.pick === 'seq') seqFixAll();
   if (!playing) playIdx = Math.min(playIdx, Math.max(0, tLen() - 1));
   renderTimeline(); renderCandidates(); drawPreview(); renderConsistency(); renderGait();
 }
@@ -2032,7 +2363,8 @@ function renderTimeline() {
         fillRow(t, Math.min(Math.max(2, P.count | 0), Math.max(2, t.frames.length)));
         focusDir(DIRS.indexOf(d));
       });
-      mk('⇄', '这一行反序', () => reverseRow(t.id));
+      /* 反序在顺序模式里毫无意义（下一帧就被 redrawTl 排回去），干脆不给。 */
+      if (P.pick !== 'seq') mk('⇄', '这一行反序', () => reverseRow(t.id));
       mk('✕', '清空这一行', () => { seqs[t.id] = []; redrawTl(); });
     }
     hd.onclick = () => switchDir(DIRS.indexOf(d));
@@ -2051,14 +2383,18 @@ function renderTimeline() {
     } else if (!a.length) {
       const e = document.createElement('div');
       e.className = 'tlempty';
-      e.textContent = '空 · 点右侧候选帧加进来，或点 ⟲ 按整步填满';
+      e.textContent = P.pick === 'seq'
+        ? '空 · 在右侧候选帧里勾选要的帧（顺序自动跟候选池）'
+        : '空 · 点右侧候选帧加进来，或点 ⟲ 按整步填满';
       strip.appendChild(e);
     }
 
     a.forEach((ci, i) => {
       const el = document.createElement('div');
       el.className = 'tslot' + (i === wrapIdx(seqSel, Math.max(1, a.length)) ? ' on' : '');
-      el.draggable = true;
+      /* 顺序模式禁用拖动：顺序由候选序号决定，拖完立刻被排回去，
+         不如直接不给拖把手，省得用户以为拖坏了。 */
+      el.draggable = P.pick !== 'seq';
       el.dataset.i = i;
       el.dataset.dir = t.id;
 
@@ -2083,7 +2419,7 @@ function renderTimeline() {
       el.appendChild(del);
 
       el.onclick = () => focusDir(DIRS.indexOf(d), i);
-      el.ondblclick = () => dupSlot(i, t.id);
+      el.ondblclick = () => { if (P.pick !== 'seq') dupSlot(i, t.id); };
 
       el.ondragstart = e => { e.dataTransfer.setData('text/plain', `${t.id}:${i}`); el.classList.add('drag'); };
       el.ondragend = () => el.classList.remove('drag');
@@ -2100,7 +2436,7 @@ function renderTimeline() {
       strip.appendChild(el);
     });
 
-    if (has) {
+    if (has && P.pick !== 'seq') {
       const add = document.createElement('div');
       add.className = 'tslot add';
       add.textContent = '+';
@@ -3204,6 +3540,15 @@ function syncUI() {
   const segC = $('#segCmp');
   if (segC) for (const b of segC.querySelectorAll('button'))
     b.classList.toggle('on', b.dataset.cmp === P.cmpMode);
+  const segP = $('#segPick');
+  if (segP) for (const b of segP.querySelectorAll('button'))
+    b.classList.toggle('on', b.dataset.pk === P.pick);
+  document.body.classList.toggle('pkseq', P.pick === 'seq');
+  const bw = $('#btnWall');
+  if (bw) bw.classList.toggle('on', P.wall);
+  const g4 = $('#btnGrid4');
+  if (g4) g4.style.display = P.wall ? 'none' : '';   // 墙里每格再附参考图是纯噪声
+  updateCandHint();
   const segB = $('#segBg');
   if (segB) for (const b of segB.querySelectorAll('button')) {
     b.classList.toggle('on', b.dataset.bg === P.bg);
@@ -3249,6 +3594,7 @@ function bind() {
   $('#guides').onchange = e => { P.guides = e.target.checked; drawPreview(); };
   $('#loop').onchange = e => { P.loop = e.target.checked; };
   $('#btnGrid4').onclick = () => { P.grid4 = !P.grid4; syncUI(); renderCandidates(); };
+  $('#btnWall').onclick = () => setWall(!P.wall);
   $('#link').onchange = e => { P.link = e.target.checked; syncUI(); };
   /* 预览布局：单方向 / 四方向 2×2 / 四方向横排。
      四方向同屏时 zCmp 会取四个面板里最小的缩放，所以高矮差、步幅差是
@@ -3299,8 +3645,18 @@ function bind() {
   $('#btnTlFill').onclick = fillSeq;
   $('#btnTlFill2').onclick = fillSeq;
   $('#btnTlClear').onclick = clearRows;
-  $('#btnTlRev').onclick = () => reverseRow(tr().id);
-  $('#btnTlDup').onclick = () => dupSlot(seqSel, tr().id);
+  $('#btnTlRev').onclick = () => {
+    if (P.pick === 'seq') return toast('顺序选帧模式下顺序由候选池决定；要自由排序请切到「插入选帧」', true);
+    reverseRow(tr().id);
+  };
+  $('#btnTlDup').onclick = () => {
+    if (P.pick === 'seq') return toast('顺序选帧模式下同一帧只能出现一次；要重复姿势请切到「插入选帧」', true);
+    dupSlot(seqSel, tr().id);
+  };
+  $('#segPick').onclick = e => {
+    const b = e.target.closest('button[data-pk]');
+    if (b) setPickMode(b.dataset.pk);
+  };
   $('#btnTlSync').onclick = autoAlignPhase;
 
   $('#btnAlignPhase').onclick = autoAlignPhase;
@@ -3428,6 +3784,16 @@ const q = new URLSearchParams(location.search);
    写进 URL 是为了把「我正在四方向对比 + 白底」这个状态直接发给别人。 */
 if (['focus', '2x2', '1x4'].includes(q.get('cmp'))) P.cmpMode = q.get('cmp');
 if (q.get('bg') && bgStyle(q.get('bg')).id === q.get('bg')) P.bg = q.get('bg');
+/* ?wall=1 —— 直接以多方向墙打开。和 ?cmp= / ?bg= 同一个用途：
+   把「我正在多方向并排挑帧」这个状态发给别人，对方看到的是同一套布局。 */
+if (q.get('wall') === '1') setWall(true);
+/* ?key=ff00ff —— 预设键色。角色身上有绿色时绿幕会把盔甲一起抠掉，
+   渲染时就得换洋红，这里跟着换，省得每次手点吸管。 */
+if (/^[0-9a-f]{6}$/i.test(q.get('key') || '')) {
+  const hx = q.get('key');
+  P.key = [0, 2, 4].map(i => parseInt(hx.slice(i, i + 2), 16));
+  $('#swatch').style.background = `rgb(${P.key.join(',')})`;
+}
 if (HAS_DEMO) loadQuadDemo();
 else if (q.has('demo')) loadDemo();
 if (VIDEO_BASE) {

@@ -1,14 +1,14 @@
 ---
-name: AIGenerateSpriteSheet
-display_name: AIGenerateSpriteSheet · 像素角色 Sprite Sheet 生产线
-display_name_en: AIGenerateSpriteSheet — Pixel Sprite Sheet Pipeline
-description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。用户给四视图（或多张视图）并用一句话描述要什么动画（走路、跑步、攻击、施法、受击、跳跃等），本 Skill 负责切图 → MiniMax H3 图生视频（ComfyUI）→ 抠绿幕 → 逐帧挑拣 → 导出 PNG + Atlas；每次渲染的原始视频归档到 videos/ 并带版本号，附带的 Sprite Sheet Studio 可直接导入视频 / GIF / PNG（PNG 追加进候选帧）、按版本载入视频，预览可四方向同屏并切换背景（棋盘/黑/白/灰/洋红）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画"时使用。
+name: pixel-sprite-sheet
+display_name: 像素角色 Sprite Sheet 生产线
+display_name_en: Pixel Sprite Sheet Pipeline
+description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。用户给四视图（或多张视图）并用一句话描述要什么动画（走路、跑步、攻击、施法、受击、跳跃等），本 Skill 负责切图 → MiniMax H3 图生视频（ComfyUI）→ 抠绿幕 → 逐帧挑拣 → 导出 PNG + Atlas；每次渲染的原始视频归档到 videos/ 并带版本号，且每次交付都会把源视频直接放进对话播放（不只给路径），附带的 Sprite Sheet Studio 可直接导入视频 / GIF / PNG（PNG 追加进候选帧）、按版本载入视频，预览可四方向同屏并切换背景（棋盘/黑/白/灰/洋红）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画"时使用。
 description_en: Generate pixel-game character animation sprite sheets from a 4-view character reference. The user supplies view images and a one-line description of the animation (walk, run, attack, cast, hurt, jump, ...); the skill runs split → MiniMax H3 image-to-video (ComfyUI) → chroma key → frame picking → export PNG + atlas, archives every render's source clip into a version-numbered videos/ folder, and ships an interactive Sprite Sheet Studio that imports video, animated GIF and PNG (PNGs are appended to the candidate pool), reloads any archived version, and previews all four directions at once over a switchable backdrop. Use when asked to turn a character into a sprite sheet, walk cycle, or 2D game animation frames.
 description: Generate pixel-game character animation sprite sheets from a 4-view character reference. Use when asked to turn a character into a sprite sheet, walk cycle, attack/cast/hurt animation, or 2D game animation frames. Runs split → MiniMax H3 image-to-video (ComfyUI) → chroma key → frame picking → PNG + atlas, archives source clips under version numbers in videos/, and ships an interactive Sprite Sheet Studio (imports video / GIF / PNG, four-direction preview, switchable backdrop).
-version: 1.2.0
+version: 1.3.0
 ---
 
-# AIGenerateSpriteSheet — Pixel Sprite Sheet Pipeline
+# Pixel Sprite Sheet Pipeline
 
 Turn a character reference sheet into an engine-ready animation sprite sheet,
 driven by a plain-language description of the animation.
@@ -19,6 +19,28 @@ driven by a plain-language description of the animation.
                                             ↓
                                     videos/<action>_vNN_<view>.mp4   ← 每次渲染留档，带版本号
 ```
+
+## Non-negotiable: the video goes on screen, every time
+
+**Every output includes the source clip, playing in the conversation.** Not a
+path, not a link, not "videos/walk_v03_front.mp4" in a sentence — the file
+itself, handed to the file-presentation tool (`present_files`) so it renders as
+a playable card. This holds at two moments:
+
+1. **The moment a render finishes** (step 3) — before you open the studio and
+   start picking frames. The clip is the only honest evidence of whether the
+   motion is right; picking 12 key frames from a bad render wastes an hour and
+   teaches nobody anything.
+2. **The moment you deliver** (see *Presenting the result*) — clip first, then
+   the GIF, then the sheet, then the studio URL.
+
+**每次交付都必须把视频直接放进对话里播出来 —— 只给路径不算交付。**
+
+The clip is also the fallback contract: if the harness genuinely cannot play
+mp4 inline, say that in one line and show the GIF instead — but never drop the
+video silently, and never let the GIF stand in for it unannounced (the GIF is
+quantised and 10 fps; it hides exactly the crawling and popping the user needs to
+judge).
 
 ## When to use
 
@@ -64,7 +86,7 @@ Set up a project folder next to the user's files. Everything below is relative
 to it.
 
 ```bash
-SKILL=~/.workbuddy/skills/AIGenerateSpriteSheet
+SKILL=~/.workbuddy/skills/pixel-sprite-sheet
 PROJ=./sprite-project          # any folder the user is happy with
 mkdir -p $PROJ/{views,frames,out,videos}
 ```
@@ -171,6 +193,14 @@ python $SKILL/scripts/videos.py list --dir $PROJ/videos      # v01 walk 56帧 vi
 Pass `--videos DIR` to put them elsewhere, `--no-archive` to keep the old
 behaviour (mp4 left next to the frames).
 
+**Stop here and put the clips on screen.** Before step 4, hand every
+`videos/<action>_v<NN>_<view>.mp4` from this batch to the file-presentation tool
+so the user watches the render while you continue setting up the studio. One
+sentence of what to look for (`腿有没有打滑 / 有没有多出来的手 / 首尾能不能接上`)
+turns that clip into a decision: keep it, or re-render with a fixed prompt. Ask
+for the verdict before picking frames — a re-render is 2–4 minutes, a wasted
+picking pass is an hour.
+
 ### 4. Mirror the side view
 
 Never render both sides — mirror one. The two directions then share every
@@ -198,8 +228,10 @@ python $SKILL/scripts/serve.py --root $PROJ --frames frames/walk --open
 This copies `studio/index.html` into `$PROJ/_studio/` and serves `$PROJ`, so the
 studio and the frames share one origin and `?frames=` resolves. When
 `$PROJ/videos/index.json` exists it also appends `&videos=/videos` and prints the
-version list, so the clips are one dropdown away. Give the user the printed URL
-and the `videos/` path. In the studio they:
+version list, so the clips are one dropdown away. Give the user the printed URL —
+and re-show the batch's clips alongside it (see *Non-negotiable* above); the
+studio link is for iterating, not a substitute for showing what was rendered. In
+the studio they:
 
 - pick the frame count and candidate density, then **re-sample**
 - switch between the four directions with the big buttons at the top right
@@ -238,18 +270,28 @@ after every re-export — GIFs are static artifacts.
 
 ## Presenting the result
 
-Show the user, in this order:
-1. the studio URL (so they can iterate themselves)
-2. the all-views GIF
-3. the exported PNG + atlas path
+Four artifacts, in this order, **every single time** — the video is not optional
+and not last:
 
-Also say where the source clips landed (`<project>/videos/`, with the version
-number of this batch) — that folder is the answer to "which render is this from",
-and the user should not have to grep `frames/` for an mp4.
+| # | Artifact | How |
+| --- | --- | --- |
+| 1 | **The clip(s)** `videos/<action>_v<NN>_<view>.mp4` | pass the absolute paths to the file-presentation tool so they play as cards. One per rendered view; when that is three files, show all three — they are the same seed and the comparison is the point |
+| 2 | **The all-views GIF** `<name>_strip.gif` | from step 7 |
+| 3 | **The sheet** `out/<name>.png` + `<name>.json` | with cell size, sheet dimensions, columns × rows, frames per view |
+| 4 | **The studio URL** | last, so it does not get in front of the result |
 
-State the numbers that matter: cell size, sheet dimensions, columns × rows,
-frame counts per view. If a direction is missing or the animation drifted, say
-so plainly rather than presenting it as finished.
+Then state which version this batch is (`v03`) and where `videos/` lives. That
+folder answers "which render is this from", and the user should never have to
+grep `frames/` for an mp4.
+
+Never do these:
+
+- print the mp4 path and call it delivered (`视频在 videos/walk_v03_front.mp4`)
+- show only the GIF and let it stand in for the clip
+- show the sheet first and the video "if needed" — the sheet is the end product,
+  the clip is the proof it is the right product
+- present a drifting or half-finished animation as done. Name the direction that
+  is missing or the part of the motion that broke, and let the clip say it.
 
 ## What the studio does that the scripts cannot
 
@@ -261,6 +303,16 @@ The scripts produce *candidate* frames. The studio is where quality happens:
 - **Sampling** — how many frames to keep, at what density, over what time range
 - **Per-direction timelines** — the four views are independent lists; lengths
   may differ
+- **Two picking modes** — `顺序选帧` ticks candidates off like a checklist (each
+  frame at most once, row order always follows the pool, click again to
+  deselect); `插入选帧` places frames by hand at the cursor and allows the same
+  frame several times. Default is 插入选帧.
+- **多方向墙** — one button expands the candidate pool into four groups of two
+  columns, one group per direction, rows aligned across groups (row *i* = the
+  candidate pair 2*i* / 2*i*+1), so a whole direction fits on screen and key
+  frames can be picked while comparing all views; a click edits its own group,
+  the two picking modes still apply globally. Collapsed, the pool stays
+  single-direction.
 - **Extras** — PNGs appended by hand live at the end of the candidate pool, keep
   the same key/scale/palette/anchor/placement, and stay out of gait analysis
   (their phase is unknown, and mixing them in would skew 步长 for all four rows)

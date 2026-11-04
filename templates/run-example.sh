@@ -2,12 +2,12 @@
 # A complete run. Copy, edit the paths and the --subject line, execute.
 set -euo pipefail
 
-SKILL="${HOME}/.workbuddy/skills/AIGenerateSpriteSheet"
+SKILL="${HOME}/.workbuddy/skills/pixel-sprite-sheet"
 SHEET="$1"                       # e.g. ~/art/hero_4views.png
 PROJ="${2:-./sprite-project}"
 ACTION="${3:-walk}"              # walk run idle attack cast hurt jump, or custom
 
-mkdir -p "$PROJ"/{views,frames,out}
+mkdir -p "$PROJ"/{views,frames,out,videos}
 
 echo "== 1/6 environment"
 python "$SKILL/scripts/generate.py" --health
@@ -35,3 +35,9 @@ python "$SKILL/scripts/serve.py" --root "$PROJ" --frames "frames/$ACTION" --open
 
 echo "== 6/6 after you export, bake previews:"
 echo "   python $SKILL/scripts/bake_gifs.py $PROJ/out/$ACTION.png --out $PROJ/out"
+echo
+# MANDATORY: the clip goes into the conversation, not just in a sentence.
+# Hand these absolute paths to the file-presentation tool so the user watches
+# the render, and again when you deliver the sheet. A path is not a deliverable.
+echo ".. show these clips to the user (do not just print the paths):"
+ls -1 "$PROJ/videos"/*.mp4 2>/dev/null || echo "   (no mp4 yet - did generate.py run?)"

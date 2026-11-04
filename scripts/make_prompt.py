@@ -37,12 +37,19 @@ import re
 #   last==first ... H3 will not close the cycle without being told
 #   no shadow ..... a cast shadow gets eaten by the key and leaves a dirty edge
 # --------------------------------------------------------------------------
+# The key colour must never appear in the costume. Green armour / a green cloak
+# under a green key gets keyed out with the backdrop. Override per run:
+#   SPRITE_KEY_NAME=magenta SPRITE_KEY_HEX=#FF00FF
+# and pick the same colour with the studio's 吸管取色 (or ?key=ff00ff).
+KEY_NAME = os.environ.get("SPRITE_KEY_NAME", "chroma green")
+KEY_HEX = os.environ.get("SPRITE_KEY_HEX", "#23E914")
+
 CONSTRAINTS = (
     "2D pixel-art animation, crisp hard-edged pixels, limited palette, no "
     "anti-aliasing, no blur. The single subject from <Picture 1> keeps "
     "identical proportions, colors, and costume details. Full body, centered, "
     "occupying about 70% of the frame height, over a completely flat pure "
-    "chroma green background (#23E914): no ground plane, no shadow, no extra "
+    f"{KEY_NAME} background ({KEY_HEX}): no ground plane, no shadow, no extra "
     "props, no text. The camera is locked off: no pan, no tilt, no zoom, no "
     "shake, no rotation of the subject. The character never travels across the "
     "frame."

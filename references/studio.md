@@ -26,12 +26,12 @@ URL: `http://127.0.0.1:<port>/_studio/index.html?frames=/frames/walk&videos=/vid
 ┌ topbar ──────────────────────────────────────────────────────┐
 │ Sprite Sheet Studio · badge · 流程说明 · 动画预览 ↗           │
 ├ 左：素材与参数 ─┬ 中：四方向对比预览 ─┬ 右：候选帧池 ────────┤
-│ 四方向素材      │  0.5s / 槽 3/12      │  前 后 左 右（大按钮）│
-│ 版本化视频 ←videos/ │  ┌────┐ ┌────┐    │  正在拼：前向 · 48 候选│
+│ 四方向素材      │  0.5s / 槽 3/12      │  候选帧 48 ⤢ ＋PNG 参考│
+│ 版本化视频 ←videos/ │  ┌────┐ ┌────┐    │  点击模式 [顺序|插入] │
 │ 一致性检查      │  │ 前 │ │ 后 │       │  ┌──┬──┬──┐          │
 │ 采样            │  └────┘ └────┘       │  │ 1│ 2│ 3│  …       │
-│ 步态相位        │  ┌────┐ ┌────┐  背景▦│  │ 1│ 2│ 3│  …       │
-│ 抠图 / 对齐 /   │  │ 左 │ │ 右 │       │  └──┴──┴──┘          │
+│ 步态相位        │  ┌────┐ ┌────┐  背景▦│  └──┴──┴──┘          │
+│ 抠图 / 对齐 /   │  │ 左 │ │ 右 │       │                      │
 │ 像素化          │  └────┘ └────┘       │                      │
 ├─────────────────┴───────────┬──────────┴──────────────────────┤
 │ ◀ ▶ ▶ 帧率 洋葱皮 参考线 单|2×2|1×4  循环 │                    │
@@ -43,12 +43,66 @@ URL: `http://127.0.0.1:<port>/_studio/index.html?frames=/frames/walk&videos=/vid
 ├ footer: 列数 间距 放大 四方向合并 文件名 │ 导出 JSON · 导出 Sprite Sheet ┤
 ```
 
+Expanded (`多方向墙`, the `⤢`-style button next to the 候选帧 count):
+
+```
+├ 左：素材与参数 ─┬─ 中：预览 ─┬─ 右：候选帧墙（每向两列）───────────┤
+│ (窄屏 <1360px   │            │  候选帧 66 ⤢ ＋PNG                │
+│  自动让出)      │            │  点击模式 [顺序选帧|插入选帧]      │
+│                 │            │   前18帧·12槽 │ 后17帧·9槽  │ 左…  │
+│                 │            │  ┌──┐┌──┐│┌──┐┌──┐│┌──┐┌──┐     │
+│                 │            │  │01││02│││01││02│││01││02│  同  │
+│                 │            │  ├──┤├──┤│├──┤├──┤│└──┘└──┘  一  │
+│                 │            │  │03││04│││03││04││         行  │
+│                 │            │  └──┘└──┘│└──┘└──┘│  │ = 同一对 │
+```
+
+
 ---
 
-## The core idea: one direction at a time
+## The core idea: one direction at a time — unless you ask for four
 
 The right panel is a **single-direction candidate pool**, not four views side by
 side. Four views in one grid makes it ambiguous which timeline a click lands in.
+
+The exception is the **多方向墙** (`⤢` button beside the 候选帧 count): the panel
+widens to four groups, **two columns per direction**, rows aligned across groups.
+Row *i* holds candidate *2i* in the left column and *2i+1* in the right one, so
+"is 前 frame 7 the same pose as 后 frame 7" is answerable by reading one row
+across — which is exactly what picking key frames needs.
+
+Two columns per direction is what makes the wall fit on screen: 18 candidates go
+from 18 rows to 9, so a whole direction is visible without scrolling. The pairing
+is **interleaved** (2i / 2i+1) rather than "first half down column A, second half
+down column B": with uneven frame counts, the block split either leaves one
+column entirely empty (when the row count is taken from the longest direction) or
+breaks cross-group row alignment (when each direction counts for itself).
+Interleaved has neither failure mode, and reading left→right, top→bottom still
+walks the candidates in chronological order, exactly like the collapsed pool.
+
+Cells in the wall are ~86px at a 1400px window, so the corner badges degrade to
+symbols: `接触` becomes a single orange dot, `✓ 3` becomes `3`, `附加` becomes `+`
+(the tooltips keep the full wording). Chinese text at 7.5px renders as an ink
+blot; the dot and the digit stay legible.
+
+Inside the wall a click belongs to **its own column**: it switches the current
+direction to that column (so the preview and the timeline highlight follow) and
+then applies the active click mode. The click mode is deliberately one global
+setting — 顺序 vs 插入 changes *what a click means*, not *which direction it
+touches*, and having four different modes would be unteachable.
+
+The wall is a layout state, not a data state: `P.wall` only changes CSS classes
+plus which renderer builds the pool (`renderWall` vs the single-column path).
+Both call the same `candCell()` builder, so badges, tints and click behaviour
+cannot drift apart. Below 1360px the left column (素材与参数) is hidden while the
+wall is open — picking does not need it, and squeezing the preview to nothing is
+worse than hiding an idle panel.
+
+Grouping is done with spacing, not borders: 5px between the two columns of a
+direction, 14px between directions, plus a 1px hairline drawn in a `::before`
+pseudo-element sitting inside that gap. The line must not consume track width —
+unequal column widths would mean unequal row heights and the cross-group row
+alignment would silently die.
 
 **The current direction** is shown in four places, all driven by one function
 (`focusDir`):
@@ -79,6 +133,33 @@ entry. Where that entry *comes from* is per-row, which is what makes both
 
 ### Controls
 
+The candidate pool has **two click modes**, picked by the `点击模式` segmented
+control directly above the frames. Default is `插入选帧` (the pre-existing
+behaviour). The setting is shared by all four columns of the wall.
+
+**`顺序选帧` — pick frames, order takes care of itself**
+
+| Action | Result |
+| --- | --- |
+| Click a candidate | select it; it lands at its **candidate-order** position in the row |
+| Click it again | deselect (the slot disappears) |
+| Green `✓ n` on a cell | selected, and it sits in timeline slot `n` |
+| Click a row header | switch current direction to that row |
+| `×` on a slot | delete = deselect that candidate |
+| Drag a slot / `⇄` / 复制末帧 | unavailable (order is defined by the pool) |
+
+The invariant is "each candidate at most once, ascending". Because selection and
+order are the same fact, there is no second source of truth: *selected* simply
+means *present in the row*. Every mutation routes through `redrawTl()`, which
+re-applies the invariant, so shortcuts like 依次填满, 反序, stride nudges and
+phase re-derivation cannot leave a row that contradicts the check marks.
+
+Use it when you are sifting a 40–60 frame pool down to 8 key poses: you look at
+the strip and tick what you want, and the timeline assembles itself in the order
+the source actually moves.
+
+**`插入选帧` — place frames by hand**
+
 | Action | Result |
 | --- | --- |
 | Click a candidate | append to the current direction's row |
@@ -90,6 +171,25 @@ entry. Where that entry *comes from* is per-row, which is what makes both
 | `×` on a slot | delete |
 | `←` `→` | move the selection |
 | `Space` | play / pause |
+
+Same candidate may occupy several slots. This is the only mode that can build a
+hold (three identical frames) or a repeated accent, which is why switching *into*
+`顺序选帧` collapses duplicates and re-sorts — it says so in the toast.
+
+### In the multi-direction wall
+
+| Action | Result |
+| --- | --- |
+| Click a cell in group *X* | that click belongs to direction *X* (current direction switches to it first) |
+| Click a group header | switch current direction; no data changes |
+| Scroll | one shared scroll for all eight columns, so row *i* stays row *i* |
+| A direction with fewer frames | its tail rows are dashed placeholders — the other groups keep their alignment |
+
+Each direction is a two-column group; groups are separated by 14px of air plus a
+hairline, so which two columns belong together is readable without a border
+around every frame. The header is sticky, and the four direction buttons above
+the pool are hidden while the wall is open (the headers already do that job and
+carry the counts).
 
 ### Sync modes
 
@@ -201,6 +301,10 @@ Directions that are absent are skipped.
 version dropdown plus one button that loads that version's mp4s into their
 directions. `serve.py` adds it automatically when the folder exists.
 
+Those same clips are what you put on screen when reporting a result — see
+*Non-negotiable: the video goes on screen, every time* in `SKILL.md`. The mp4
+goes into the conversation; its path alone is not a delivery.
+
 `?front=…&back=…&right=…` maps explicitly. With no parameters, drag files in.
 
 `?cmp=focus|2x2|1x4` and `?bg=dcheck|lcheck|black|white|gray|magenta` open the
@@ -208,6 +312,8 @@ studio with the layout and backdrop already set — use these when handing a lin
 to someone so they see the same four-up view on the same background. `?cmp=` is
 re-applied after the frame folder finishes loading; the loader's own default
 (back to `focus`) only wins when the URL says nothing.
+
+`?wall=1` opens with the candidate wall already expanded, for the same reason.
 
 ---
 

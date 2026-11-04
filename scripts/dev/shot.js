@@ -63,7 +63,9 @@ async function main() {
 
   await send('Runtime.enable');
   await send('Page.enable');
-  await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 940, deviceScaleFactor: 1, mobile: false });
+  // W / H 让同一份脚本能测窄窗口（候选池展开后的媒体查询就靠这个验）
+  const W = +(process.env.W || 1400), H = +(process.env.H || 940);
+  await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: URL_ });
 
   const evalJs = async expr => {

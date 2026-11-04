@@ -78,6 +78,26 @@ Then in the studio: chroma-key, choose candidate density, build a timeline per d
 switch the backdrop (checker / black / white / grey / magenta for fringe), and export
 PNG + atlas with per-frame rects. The scripts produce *candidate* frames — the picking is the point.
 
+Two things the studio does that are worth knowing before the first run:
+
+- **Two picking modes** (`点击模式`, shared by every column): `顺序选帧` ticks candidates off
+  like a checklist — each frame at most once, row order always follows the candidate pool,
+  click again to deselect. `插入选帧` places frames by hand at the cursor and allows the same
+  frame several times (holds, repeated accents). Duplicates are collapsed and re-sorted when
+  you switch into `顺序选帧`, and the toast says how many slots went away.
+- **多方向墙** (`⤢` beside the 候选帧 count) expands the pool into four groups of two columns,
+  one group per direction, rows aligned across groups (row *i* = candidates 2*i* / 2*i*+1).
+  A click edits its own group, so key frames get picked while all four views stay in sight.
+  Collapsed, the pool is single-direction again.
+
+## Every delivery plays the render
+
+The mp4 is part of the answer, not a byproduct. After each render the clip is put on screen
+(`videos/<action>_vNN_<view>.mp4`), and the final delivery leads with it — clip → all-views
+GIF → sheet + atlas numbers → studio URL. A path printed in prose is not a delivery, and the
+GIF is not a stand-in: 10 fps quantisation eats exactly the drift the clip exists to show.
+`SKILL.md` states this as a hard rule; see *Non-negotiable: the video goes on screen*.
+
 ## Rules that save renders
 
 - **One shared seed per batch.** Mixed seeds give up to 33% stride spread across views; a shared seed brings it to ~9%.
