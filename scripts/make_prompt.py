@@ -48,12 +48,33 @@ CONSTRAINTS = (
     "2D pixel-art animation, crisp hard-edged pixels, limited palette, no "
     "anti-aliasing, no blur. The single subject from <Picture 1> keeps "
     "identical proportions, colors, and costume details. Full body, centered, "
-    "occupying about 70% of the frame height, over a completely flat pure "
+    "occupying about 70% of the frame height, with empty space left on every "
+    "side so that the whole silhouette stays inside the frame for the entire "
+    "motion, over a completely flat pure "
     f"{KEY_NAME} background ({KEY_HEX}): no ground plane, no shadow, no extra "
     "props, no text. The camera is locked off: no pan, no tilt, no zoom, no "
     "shake, no rotation of the subject. The character never travels across the "
     "frame."
 )
+
+
+def constraints(key_name: str | None = None, key_hex: str | None = None,
+                coverage: float | None = None) -> str:
+    """CONSTRAINTS, adjusted to the key colour and framing of this run.
+
+    The percentage is not decoration: it is what the reference image shows. A
+    reference padded down to 48% of the canvas next to a prompt that still says
+    "70% of the frame height" is a contradiction, and H3 resolves contradictions
+    by drifting.
+    """
+    s = CONSTRAINTS
+    if key_name or key_hex:
+        s = s.replace(f"pure {KEY_NAME} background ({KEY_HEX})",
+                      f"pure {key_name or KEY_NAME} background ({key_hex or KEY_HEX})")
+    if coverage:
+        s = s.replace("about 70% of the frame height",
+                      f"about {int(round(coverage * 100))}% of the frame height")
+    return s
 
 # Views. 'left' and 'right' are the same clip mirrored; generate one of them.
 VIEWS = {
@@ -245,14 +266,17 @@ def limit_sentence(limits: list[str]) -> str:
 def build_prompt(view: str, action: str, subject: str, seconds: float,
                  describe: str | None = None,
                  limits: list[str] | None = None,
-                 extra: str | None = None) -> str:
+                 extra: str | None = None,
+                 key_name: str | None = None,
+                 key_hex: str | None = None,
+                 coverage: float | None = None) -> str:
     if view not in VIEWS:
         raise SystemExit(f"view must be one of {', '.join(VIEWS)}")
     vdesc, _ = VIEWS[view]
     preset = PRESETS.get(action, {})
     lim = limits if limits is not None else preset.get("limits", DEFAULT_LIMITS)
 
-    setup = CONSTRAINTS.replace(
+    setup = constraints(key_name, key_hex, coverage).replace(
         "The single subject from <Picture 1>",
         f"The single subject from <Picture 1> — {subject.strip()} —"
     )
@@ -280,6 +304,10 @@ def main() -> int:
     ap.add_argument("--frames", type=int, default=56)
     ap.add_argument("--limits", help="comma list of what may move")
     ap.add_argument("--extra", help="one extra sentence appended to the body")
+    ap.add_argument("--key", help="key colour as #RRGGBB (must match the backdrop)")
+    ap.add_argument("--key-name", help="how to call the key colour in words")
+    ap.add_argument("--coverage", type=float,
+                    help="fraction of the frame the subject fills (0.48 / 0.58 …)")
     ap.add_argument("--out", help="write the prompt here")
     ap.add_argument("--print-context", action="store_true",
                     help="print a short JSON summary instead of the prompt")
@@ -304,7 +332,10 @@ def main() -> int:
         limits = [s.strip() for s in args.limits.split(",") if s.strip()]
 
     prompt = build_prompt(args.view, args.action, subject, seconds,
-                          args.describe, limits, args.extra)
+                          args.describe, limits, args.extra,
+                          key_name=args.key_name or KEY_NAME,
+                          key_hex=args.key or KEY_HEX,
+                          coverage=args.coverage)
 
     if args.print_context:
         print(json.dumps({

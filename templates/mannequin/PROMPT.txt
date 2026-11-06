@@ -1,0 +1,26 @@
+Image prompt used to make the bundled proxy reference (route B).
+Regenerate a 2x2 four-view sheet with an image model, then split_views.py it.
+Edit the weapon line to match the character you are actually animating.
+
+Pixel art game sprite sheet, 2x2 grid of four panels on pure flat green #00FF00
+background, no white lines, no text, no logo, no watermark, no caption. The same
+plain wooden artist's mannequin character in all four panels: light birch wood,
+round ball joints at shoulders elbows wrists hips knees ankles, smooth
+featureless egg-shaped head with no face, no hair, no clothing, no armor. It
+holds one straight grey steel short sword in each hand, blades angled down and
+outward.
+
+CRITICAL POSE DIFFERENCE per panel:
+TOP-LEFT  front view, facing the viewer, head-on, symmetric, both shoulders visible.
+TOP-RIGHT back view, we see the back of the featureless head and the back of the
+          torso, symmetric.
+BOTTOM-LEFT  TRUE SIDE PROFILE facing image-LEFT: body rotated exactly 90
+          degrees, only ONE arm and ONE leg visible, torso a thin vertical
+          silhouette, head profile points left, the two swords overlap and point
+          down-left.
+BOTTOM-RIGHT TRUE SIDE PROFILE facing image-RIGHT: the same, mirrored, head
+          profile points right.
+
+Keep identical body proportions, identical sword design and identical scale in
+all four panels. Crisp hard-edged pixel clusters, limited flat palette, no
+anti-aliasing, centered characters with margins.

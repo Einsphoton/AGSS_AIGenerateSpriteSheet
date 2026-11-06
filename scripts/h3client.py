@@ -62,35 +62,67 @@ def models() -> dict:
 
 
 def comfy_input_dir(server: str = DEFAULT_SERVER) -> str | None:
-    """Where ComfyUI reads LoadImage files from.
+    """Where ComfyUI reads LoadImage files from — best effort, filesystem only.
 
-    Order: $H3_COMFY_INPUT, then a few usual locations. Returns None if we
-    cannot find one — the caller decides whether that is fatal.
+    Order: $H3_COMFY_INPUT, then ComfyUI's own ``--input-directory`` /
+    ``--base-directory`` from ``/system_stats`` argv, then a few usual spots.
+
+    This function is the *fallback*. ComfyUI Desktop installs a second copy of
+    ComfyUI with its own input folder (``Comfy-Desktop/ComfyUI-Shared/input``)
+    and nothing else distinguishes the two: guessing wrong means LoadImage
+    silently reads a stale ``ref_front.png`` from a previous session and you
+    render the wrong character. `stage()` therefore uploads over HTTP first and
+    only lands here when that is unavailable.
     """
     env = os.environ.get("H3_COMFY_INPUT")
     if env and os.path.isdir(env):
         return env
 
-    # Try to ask ComfyUI where its own root is.
+    # Ask ComfyUI where it was started from. Desktop passes
+    #   --input-directory <path> --output-directory <path>
+    # and a regular install may pass --base-directory <root>.
     try:
         stats = json.loads(get(server, "/system_stats"))
+        info = stats.get("system") or {}
+        argv = [str(a) for a in (info.get("argv") or [])]
+        for i, tok in enumerate(argv):
+            for flag in ("--input-directory", "--input_directory"):
+                if tok == flag and i + 1 < len(argv):
+                    if os.path.isdir(argv[i + 1]):
+                        return argv[i + 1]
+                elif tok.startswith(flag + "="):
+                    val = tok.split("=", 1)[1]
+                    if os.path.isdir(val):
+                        return val
+        for i, tok in enumerate(argv):
+            for flag in ("--base-directory", "--base_directory"):
+                val = None
+                if tok == flag and i + 1 < len(argv):
+                    val = argv[i + 1]
+                elif tok.startswith(flag + "="):
+                    val = tok.split("=", 1)[1]
+                if val and os.path.isdir(os.path.join(val, "input")):
+                    return os.path.join(val, "input")
         for key in ("comfyui_root", "base_path", "root"):
-            root = stats.get("system", {}).get(key)
-            if root:
-                cand = os.path.join(root, "input")
-                if os.path.isdir(cand):
-                    return cand
+            root = info.get(key)
+            if root and os.path.isdir(os.path.join(root, "input")):
+                return os.path.join(root, "input")
     except Exception:
         pass
 
+    localapp = os.environ.get("LOCALAPPDATA", "")
     for cand in (
+        os.path.join(localapp, "Comfy-Desktop", "ComfyUI-Shared", "input") if localapp else "",
+        os.path.expanduser("~/AppData/Local/Comfy-Desktop/ComfyUI-Shared/input"),
+        os.path.expanduser("~/Library/Application Support/Comfy-Desktop/ComfyUI-Shared/input"),
+        os.path.expanduser("~/.local/share/Comfy-Desktop/ComfyUI-Shared/input"),
         os.path.expanduser("~/ComfyUI/input"),
         os.path.expanduser("~/comfyui/input"),
         "/comfyui/input",
         "D:/AI/ComfyUI-master/input",
         "C:/ComfyUI/input",
     ):
-        if os.path.isdir(cand):
+        if cand and os.path.isdir(cand):
             return cand
     return None
 
@@ -236,21 +268,85 @@ def build(
 # Stage / submit / wait / collect
 # --------------------------------------------------------------------------
 
-def stage(image_path: str, server: str = DEFAULT_SERVER, name: str | None = None) -> str:
-    """Copy a reference image into ComfyUI's input dir; return the LoadImage name."""
+def _md5(path: str) -> str:
+    import hashlib
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def upload_image(path: str, server: str = DEFAULT_SERVER, name: str | None = None) -> str:
+    """Push a file to ComfyUI's input folder over HTTP; return the name to use.
+
+    The server writes the bytes itself, so there is no way to land in the wrong
+    input directory (a Desktop install and a portable install each have one, and
+    LoadImage reads whichever belongs to the running process).
+    """
+    import uuid
+
+    boundary = "----h3" + uuid.uuid4().hex
+    fname = name or os.path.basename(path)
+    with open(path, "rb") as f:
+        data = f.read()
+    body = b"".join([
+        f"--{boundary}\r\n".encode(),
+        f'Content-Disposition: form-data; name="image"; filename="{fname}"\r\n'.encode(),
+        b"Content-Type: image/png\r\n\r\n", data, b"\r\n",
+        f"--{boundary}\r\n".encode(),
+        b'Content-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n',
+        f"--{boundary}--\r\n".encode(),
+    ])
+    req = urllib.request.Request(
+        server + "/upload/image", data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST")
+    with _opener().open(req, timeout=120) as r:
+        info = json.loads(r.read())
+    got = info.get("name") or fname
+    sub = info.get("subfolder") or ""
+    return f"{sub}/{got}" if sub else got
+
+
+def stage(image_path: str, server: str = DEFAULT_SERVER, name: str | None = None,
+          unique: bool = True) -> str:
+    """Make a reference image readable by LoadImage; return the name it landed as.
+
+    Uploads over HTTP (authoritative, no path guessing). Falls back to copying
+    into `comfy_input_dir()` when the upload endpoint is unavailable.
+
+    `unique` appends a short content hash to the filename. That is not cosmetic:
+    with a fixed `ref_front.png`, a render queued before the copy finishes — or
+    an old file the running instance can still see — gives you frames of the
+    *previous* character with a perfectly valid prompt. The hash makes
+    "the name says what the bytes are" true.
+    """
     import shutil
 
     if not os.path.exists(image_path):
         raise SystemExit(f"reference image not found: {image_path}")
+
+    fname = name or os.path.basename(image_path)
+    if unique:
+        stem, ext = os.path.splitext(fname)
+        fname = f"{stem}_{_md5(image_path)[:8]}{ext or '.png'}"
+
+    try:
+        return upload_image(image_path, server, fname)
+    except Exception as e:
+        print(f"note: /upload/image unavailable ({type(e).__name__}); "
+              f"copying into the input folder instead", file=sys.stderr)
+
     d = comfy_input_dir(server)
     if not d:
         raise SystemExit(
-            "cannot find ComfyUI's input folder. Set H3_COMFY_INPUT to it, e.g.\n"
+            "cannot find ComfyUI's input folder and /upload/image failed. Set "
+            "H3_COMFY_INPUT to it, e.g.\n"
             "  export H3_COMFY_INPUT=/path/to/ComfyUI/input"
         )
-    name = name or os.path.basename(image_path)
-    shutil.copyfile(image_path, os.path.join(d, name))
-    return name
+    shutil.copyfile(image_path, os.path.join(d, fname))
+    return fname
 
 
 def submit(graph: dict, server: str = DEFAULT_SERVER) -> str:

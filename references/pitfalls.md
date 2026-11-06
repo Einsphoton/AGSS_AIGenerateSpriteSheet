@@ -113,6 +113,44 @@ reference), not the prompt.
 
 ---
 
+## The frame is a crop, and H3 copies it
+
+A reference that fills its canvas is read as "this is the whole character, and
+the frame edges are where it ends". The render then holds that framing, so the
+first time a sword sweeps outward it leaves the frame — and comes back as a
+stump, or a blade cut flat along the top edge.
+
+Real numbers from one run: `split_views` crops to the bounding box, so the
+reference came out at **98% of its own canvas**. The rendered clip came back with
+the figure at 96% of a 768 px frame, and **29 of 39 front-view frames had the
+plume and blade sliced off at the top**. Nothing in the prompt asked for that;
+the reference did.
+
+The fix is one step, before rendering:
+
+```bash
+python scripts/prep_ref.py views/ --action attack    # or let generate.py do it
+```
+
+- square canvas sized from the figure, figure at **48%** for arc-heavy actions
+  (`attack cast throw punch kick`), **58%** otherwise
+- one shared scale for all four views, so the narrow side view stays narrow
+- composited onto the key colour → also kills the black first frame that a
+  transparent PNG produces
+
+Two failure modes are easy to confuse here:
+
+| symptom | cause | fix |
+| --- | --- | --- |
+| blade/plume cut flat at the *top* | figure too tall for the frame | more top margin → lower `--coverage` |
+| blade cut at the *side* mid-swing | arc leaves the standing bbox | same, plus keep the blades parallel rather than sweeping them wide |
+
+`scripts/qc.py frames <dir>` measures it: the longest unbroken run of foreground
+along each of the four frame borders. A couple of frames grazing the edge is
+normal for a wide arc; ten or more means the framing is wrong.
+
+---
+
 ## Frame count is on a grid
 
 `length % 17 == 5`. Valid: 5, 22, 39, 56, 73, 90, 107, 124. Asking for 50
@@ -174,7 +212,15 @@ a dirty grey edge around the feet that no tolerance setting cleans up.
 
 If the character has green in its design (green armour, green cloak), pick a
 different key colour in the studio and say so — the default green will eat the
-costume.
+costume. `generate.py` now scores green / magenta / cyan against the character's
+own pixels and picks one that does not already exist in the costume, printing the
+clash percentage; `--key magenta` (or `#FF00FF`) overrides. The prompt wording
+follows that choice, so the backdrop and the key agree.
+
+The other half of this: **a transparent reference gives a black first frame.**
+H3 echoes the reference as frame 1, and an RGBA PNG pasted on black is a black
+frame. `prep_ref.py` composites onto the key colour first, which is why the
+prepared file — not the split file — is what gets uploaded.
 
 ---
 

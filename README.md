@@ -4,15 +4,39 @@ Turn **one character reference sheet** into an **engine-ready pixel animation sp
 driven by a plain-language description of the animation.
 
 ```
-4-view image  →  split_views  →  generate (H3 / ComfyUI)  →  studio (key + pick)  →  PNG + atlas
-   切图             四方向参考帧        绿幕视频 → 帧序列        抠图·挑帧·预览·导出
-                                            ↓
-                                    videos/<action>_vNN_<view>.mp4   ← 每次渲染留档，带版本号
+4-view image → split_views → prep_ref → generate (H3) → qc → studio (key+pick) → PNG + atlas
+   切图         四方向参考帧    补白·幕布    帧序列/videos   边缘质检   抠图·挑帧·导出
+                                  ↓
+                          videos/<action>_vNN_<view>.mp4   ← 每次渲染留档，带版本号
 ```
 
 You give it a 4-view character sheet (front / back / side) and one sentence —
 "走路" / "跑步" / "攻击一次" / anything — and it runs the whole chain:
-split → MiniMax H3 image-to-video → chroma key → frame picking → PNG + atlas JSON.
+split → reference prep → MiniMax H3 image-to-video → chroma key → frame QC →
+frame picking → PNG + atlas JSON.
+
+## Two routes — the skill asks before it renders
+
+|  | **A — direct** | **B — proxy pass** |
+| --- | --- | --- |
+| what gets rendered | the target character, once | a plain mannequin, then the character, **same seed + same beats** |
+| cost | 1× (≈2–4 min per view) | 2× |
+| motion when the character is busy | H3 spends attention on cape / plume / layered armour and the beats go mushy | the mannequin has nothing to get wrong, so the beats land cleanly and the second pass inherits the timing |
+| wins when | simple silhouette, one weapon, tight budget | capes, long hair, plumes, dual weapons, layered armour, or the user wants to judge the motion before committing |
+
+Route B is the same pipeline run twice and only `--views` / `--subject` change
+between passes — everything else (`--seed`, beat text, `--frames`, `--coverage`,
+`--key`) must be identical, or the second pass is a new animation rather than a
+reskin. Full contract in [`references/proxy-pass.md`](references/proxy-pass.md).
+
+**Route B still ends in the studio.** The mannequin pass is a motion sketch, not
+a deliverable: the character pass produces the frames, and the user keys and
+picks those in Sprite Sheet Studio like any other run. Never hand over mannequin
+frames, and never script the export to skip the studio.
+
+A neutral dual-sword mannequin ships in `templates/mannequin/` (four views on
+magenta, 752²) with its prompt in `PROMPT.txt`, and the matching beat text in
+`templates/beats/attack-dual-sword.txt`.
 
 ---
 
@@ -21,10 +45,10 @@ split → MiniMax H3 image-to-video → chroma key → frame picking → PNG + a
 | Path | What it is |
 | --- | --- |
 | `SKILL.md` | The agent skill definition — the pipeline, in order, with the rules that matter |
-| `scripts/` | The pipeline as plain CLI tools (`split_views`, `generate`, `mirror`, `manifest`, `serve`, `bake_gifs`) |
+| `scripts/` | The pipeline as plain CLI tools (`split_views`, `prep_ref`, `generate`, `qc`, `mirror`, `manifest`, `serve`, `bake_gifs`) |
 | `studio/index.html` | **Sprite Sheet Studio** — single file, no build step: key, sample, pick frames, preview 4 directions, export |
-| `references/` | `studio.md` (interaction model), `pitfalls.md` (what breaks H3 generation), `prompt-recipes.md` |
-| `templates/` | A runnable example (`run-example.sh`) and a subject description sample |
+| `references/` | `studio.md` (interaction model), `pitfalls.md` (what breaks H3 generation), `prompt-recipes.md`, `proxy-pass.md` (route B) |
+| `templates/` | A runnable example (`run-example.sh`), a subject sample, a **mannequin proxy** (`mannequin/`) and reusable beat text (`beats/`) |
 
 ## Requirements
 
@@ -57,21 +81,42 @@ mkdir -p $PROJ/{views,frames,out,videos}
 # 1. split the reference into per-view PNGs
 python $SKILL/scripts/split_views.py character_sheet.png --out $PROJ/views
 
-# 2. render all views in one batch, one shared seed
+# 2. widen the canvas + composite onto the key colour (generate.py also does this for you)
+python $SKILL/scripts/prep_ref.py $PROJ/views --action attack --key auto
+
+# 3. render all views in one batch, one shared seed
 python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/walk \
   --action walk --subject "a chibi armored warrior with a red plume" --frames 56
 
-# 3. mirror one side instead of rendering both
+# 4. quality gate — edge cropping, empty/black frames, backdrop purity
+python $SKILL/scripts/qc.py frames $PROJ/frames/walk --key auto --action attack
+
+# 5. mirror one side instead of rendering both
 python $SKILL/scripts/mirror.py $PROJ/frames/walk/right $PROJ/frames/walk/left
 
-# 4. renumber frames + write manifests
+# 6. renumber frames + write manifests
 python $SKILL/scripts/manifest.py $PROJ/frames/walk --dirs front,back,left,right
 
-# 5. open the studio to key, pick and export
+# 7. open the studio to key, pick and export
 python $SKILL/scripts/serve.py --root $PROJ --frames frames/walk --cmp 2x2 --open
 
-# 6. bake preview GIFs from the exported sheet
+# 8. bake preview GIFs from the exported sheet
 python $SKILL/scripts/bake_gifs.py $PROJ/out/walk.png --fps 10 --out $PROJ/out
+```
+
+Route B replays steps 3–4 twice against two `--views` folders, with the same
+`--seed`, the same `--describe-file`, the same `--frames / --coverage / --key`:
+
+```bash
+# pass 1 — block the motion with the mannequin
+python $SKILL/scripts/generate.py --views $PROJ/proxy_views --out $PROJ/frames/slash_proxy \
+  --action attack --subject "a faceless wooden mannequin holding two straight swords" \
+  --describe-file $SKILL/templates/beats/attack-dual-sword.txt --frames 39 --seed 808080
+
+# pass 2 — same seed, same beats, the real character
+python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/slash \
+  --action attack --subject "a chibi warrior in green scale armour with a red plume" \
+  --describe-file $SKILL/templates/beats/attack-dual-sword.txt --frames 39 --seed 808080
 ```
 
 Then in the studio: chroma-key, choose candidate density, build a timeline per direction,
@@ -100,6 +145,16 @@ GIF is not a stand-in: 10 fps quantisation eats exactly the drift the clip exist
 
 ## Rules that save renders
 
+- **The frame is a crop, and H3 copies it.** A reference tight to its own canvas teaches the model
+  that the canvas edge is where the character ends — the first outward sword swing comes back as a
+  stump. In one real run 29 of 39 front frames had the blade and plume cut flat. `prep_ref.py`
+  pads to a square canvas with the figure at 48% (arc actions) / 58%, and `qc.py` measures the
+  longest run of foreground pixels on each border so the failure is caught before picking.
+- **The key colour comes from the reference.** Green armour shot against green loses the armour.
+  `generate.py` scores green / magenta / cyan against the character's own pixels and picks the one
+  that is not already in the costume, then prints the clash percentage.
+- **A transparent PNG gives a black first frame.** H3 echoes the reference as frame 1; compositing
+  onto the key colour (which `prep_ref` does) is what removes it.
 - **One shared seed per batch.** Mixed seeds give up to 33% stride spread across views; a shared seed brings it to ~9%.
 - **Never render both sides** — mirror one, so the two directions cannot desync.
 - **`length % 17 == 5`** — 5, 22, 39, 56, 73, 90, 107, 124. 56 = two full strides at 24 fps.
