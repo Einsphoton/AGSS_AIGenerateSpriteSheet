@@ -790,6 +790,11 @@
     <div class="divider"></div>
     <div class="row"><label>文件名</label><input type="text" id="fname" value="walk"></div>
     <div class="spacer"></div>
+    <button class="ghost" id="btnProjSave"
+            title="把当前全部参数、四方向时间轴、素材（mp4/gif/PNG）和导出的表打包成 zip">保存工程</button>
+    <button class="ghost" id="btnProjOpen"
+            title="导入工程存档（.zip），原样恢复参数、素材与选帧">导入工程</button>
+    <input type="file" id="projFile" accept=".zip,application/zip" hidden>
     <button class="ghost" id="btnJson">导出 JSON</button>
     <button class="prim" id="btnPng">导出 Sprite Sheet</button>
   </footer>
@@ -876,6 +881,9 @@ const tracks = DIRS.map(d => ({
   duration: 0, vw: 0, vh: 0,
   stat: null, gait: null, dirty: true,
   frozen: false, mirrorSig: '', sampleRev: 0,
+  /* 素材来源（工程存档用）：kind = video / gif / images；
+     video 与 gif 额外留着原始文件，存档时直接写进 zip。 */
+  srcKind: null, srcBlob: null, srcName: '',
 }));
 
 /* 四份独立索引列表 —— 唯一真相 */
@@ -2937,13 +2945,25 @@ async function newVideoFromBlob(blob) {
   return { v, url };
 }
 
-async function putVideo(t, blob) {
+/* 素材来源记账。
+   工程存档要能把「原样」恢复回去，就必须留下**原始字节**：视频是一段 mp4，
+   GIF 是那个 .gif 文件，逐张导入的 PNG 则直接存位图。只留 video 元素或
+   ImageBitmap 是存不下来的 —— 前者拿不到字节，后者已经没有文件名/编码信息。
+   所以 putVideo / putGif 在这里登记 srcKind + srcBlob，存档时照着取。 */
+function setSource(t, kind, blob, name) {
+  t.srcKind = kind;          // 'video' | 'gif' | 'images' | null
+  t.srcBlob = blob || null;  // video / gif 的原始文件
+  t.srcName = name || '';
+}
+
+async function putVideo(t, blob, name) {
   const { v, url } = await newVideoFromBlob(blob);
   if (t.url) URL.revokeObjectURL(t.url);
   t.video = v; t.url = url; t.images = null;
   t.vw = v.videoWidth; t.vh = v.videoHeight; t.duration = v.duration || 0;
   t.frozen = false; t.mirrorSig = '';
   t.dirty = true; t.keyed = []; t.frames = [];
+  setSource(t, 'video', blob, name);
 }
 
 async function putImages(t, bitmaps) {
@@ -2952,6 +2972,7 @@ async function putImages(t, bitmaps) {
   t.vw = bitmaps[0].width; t.vh = bitmaps[0].height; t.duration = bitmaps.length;
   t.frozen = false; t.mirrorSig = '';
   t.dirty = true; t.keyed = []; t.frames = [];
+  setSource(t, 'images', null, '');
 }
 
 function flipBitmap(bmp) {
@@ -2989,6 +3010,7 @@ async function putGif(t, file) {
   const bmps = await gifToBitmaps(file);
   if (!bmps.length) throw new Error('GIF 没有帧');
   await putImages(t, bmps);
+  setSource(t, 'gif', file, file.name || '');   // putImages 会写成 'images'，这里改回来
   return bmps.length;
 }
 
@@ -2999,6 +3021,10 @@ async function putGif(t, file) {
    以前 PNG 走的是「替换素材」那条路，结果想补几帧只能把整段素材冲掉。 */
 async function handleFiles(files, mode) {
   const arr = Array.from(files);
+  /* 工程存档（.zip）优先：拖进来就当「导入工程」，别再报「不支持的文件类型」 */
+  const zip = arr.find(f => /\.zip$/i.test(f.name || '') || f.type === 'application/zip');
+  if (zip) { await openProjectFile(zip); return; }
+
   const forceExtra = mode === 'extra';
   const gifs = arr.filter(isGifFile);
   const vids = arr.filter(isVidFile);
@@ -3022,7 +3048,7 @@ async function handleFiles(files, mode) {
           const n = await putGif(t, p.file);
           notes.push(`${t.label} GIF ${n} 帧`);
         } else {
-          await putVideo(t, p.file);
+          await putVideo(t, p.file, p.file.name);
         }
       } catch (e) {
         notes.push(`${p.file.name}: ${e.message}`);
@@ -3182,7 +3208,7 @@ async function loadVideoVersion(version) {
     try {
       const r = await fetch(`${VIDEO_BASE}/${name}`);
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      await putVideo(tOf(d.id), await r.blob());
+      await putVideo(tOf(d.id), await r.blob(), name);
       ok++;
     } catch (e) {
       miss.push(d.label);
@@ -3255,7 +3281,7 @@ async function loadMedia(dirId, folder, names) {
     try {
       const r = await fetch(`${base}/${vid}`);
       if (r.ok) {
-        await putVideo(t, await r.blob());
+        await putVideo(t, await r.blob(), vid);
         console.log(`${dirId} <- ${base}/${vid} (video)`);
         return true;
       }
@@ -3315,7 +3341,7 @@ async function loadDemo() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const blob = await res.blob();
     const t = tr();
-    await putVideo(t, blob);
+    await putVideo(t, blob, 'demo/walk_side_demo.mp4');
     P.tStart = 0; P.tEnd = 100; P.count = 8; P.mult = 2; syncUI();
     await buildAll({ resample:true, resetSeq:true });
     toast('示例已载入 · ' + t.label);
@@ -3348,45 +3374,60 @@ function collectRows() {
   })).filter(r => r.frames.length);
 }
 
+/* 把时间轴铺成一张表 —— 不碰 DOM、不弹窗。
+   预览、下载、工程存档三条路都走这里，保证「存进 zip 的那张表」就是
+   「点导出拿到的那张表」。 */
+function buildSheet() {
+  const rows = collectRows();
+  if (!rows.length) return null;
+
+  const cellW = rows[0].frames[0].w, cellH = rows[0].frames[0].h;
+  const maxCols = Math.max(...rows.map(r => r.frames.length));
+  const cols = P.cols > 0 ? Math.min(P.cols, maxCols) : maxCols;
+  const rowCount = rows.reduce((s, r) => s + Math.ceil(r.frames.length / cols), 0);
+  const gap = P.gap | 0, sc = P.scale | 0;
+
+  const W = cols * cellW * sc + Math.max(0, cols - 1) * gap;
+  const H = rowCount * cellH * sc + Math.max(0, rowCount - 1) * gap;
+
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, W, H);
+
+  const atlas = {
+    meta: { image:`${P.fname}.png`, cellWidth:cellW*sc, cellHeight:cellH*sc,
+            columns:cols, rows:rowCount, scale:sc, gap, fps:P.fps,
+            directions: rows.map(r => r.dir) },
+    animations: {},
+  };
+
+  let rowIdx = 0;
+  for (const r of rows) {
+    const frames = [];
+    r.frames.forEach((f, i) => {
+      const c = i % cols, rr = rowIdx + Math.floor(i / cols);
+      const dx = c * (cellW * sc + gap), dy = rr * (cellH * sc + gap);
+      ctx.drawImage(f.canvas, dx, dy, f.w * sc, f.h * sc);
+      frames.push({ x:dx, y:dy, w:f.w*sc, h:f.h*sc, duration: Math.round(1000 / P.fps) });
+    });
+    atlas.animations[r.dir] = { label:r.label, frames };
+    rowIdx += Math.ceil(r.frames.length / cols);
+  }
+
+  return {
+    canvas: cv, atlas, W, H, cols, rowCount, cellW, cellH, sc, rows,
+    name: P.merge ? `${P.fname}_sheet.png` : `${P.fname}_${rows[0].dir}.png`,
+    atlasName: `${P.fname}_atlas.json`,
+  };
+}
+
 function exportSheet() {
   try {
-    const rows = collectRows();
-    if (!rows.length) return toast('时间轴里没有帧', true);
-
-    const cellW = rows[0].frames[0].w, cellH = rows[0].frames[0].h;
-    const maxCols = Math.max(...rows.map(r => r.frames.length));
-    const cols = P.cols > 0 ? Math.min(P.cols, maxCols) : maxCols;
-    const rowCount = rows.reduce((s, r) => s + Math.ceil(r.frames.length / cols), 0);
-    const gap = P.gap | 0, sc = P.scale | 0;
-
-    const W = cols * cellW * sc + Math.max(0, cols - 1) * gap;
-    const H = rowCount * cellH * sc + Math.max(0, rowCount - 1) * gap;
-
-    const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const ctx = cv.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, W, H);
-
-    const atlas = {
-      meta: { image:`${P.fname}.png`, cellWidth:cellW*sc, cellHeight:cellH*sc,
-              columns:cols, rows:rowCount, scale:sc, gap, fps:P.fps,
-              directions: rows.map(r => r.dir) },
-      animations: {},
-    };
-
-    let rowIdx = 0;
-    for (const r of rows) {
-      const frames = [];
-      r.frames.forEach((f, i) => {
-        const c = i % cols, rr = rowIdx + Math.floor(i / cols);
-        const dx = c * (cellW * sc + gap), dy = rr * (cellH * sc + gap);
-        ctx.drawImage(f.canvas, dx, dy, f.w * sc, f.h * sc);
-        frames.push({ x:dx, y:dy, w:f.w*sc, h:f.h*sc, duration: Math.round(1000 / P.fps) });
-      });
-      atlas.animations[r.dir] = { label:r.label, frames };
-      rowIdx += Math.ceil(r.frames.length / cols);
-    }
+    const sh = buildSheet();
+    if (!sh) return toast('时间轴里没有帧', true);
+    const { canvas:cv, atlas, W, H, cols, rowCount, cellW, sc, rows } = sh;
 
     const m = $('#modal'), mc = $('#mCanvas');
     mc.width = W; mc.height = H;
@@ -3403,9 +3444,9 @@ function exportSheet() {
 
     window.__lastAtlas = atlas;
     window.__lastSheet = { canvas:cv, blob:null };
-    window.__sheetName = P.merge ? `${P.fname}_sheet.png` : `${P.fname}_${rows[0].dir}.png`;
+    window.__sheetName = sh.name;
     cv.toBlob(b => { if (window.__lastSheet) window.__lastSheet.blob = b; }, 'image/png');
-    toast(`已生成 ${window.__sheetName} · ${W}×${H}`);
+    toast(`已生成 ${sh.name} · ${W}×${H}`);
   } catch (e) {
     document.title = 'EXPORT ERR: ' + e.message;
     console.error(e);
@@ -3432,6 +3473,494 @@ function download(blob, name) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ===================== 工程存档（zip） =====================
+   为什么打成一个 zip：这套 studio 的状态散在三处 —— 面板参数（P）、四份
+   时间轴索引（seqs）、以及素材本身（mp4 / gif / 逐张 PNG）。只存参数，换个
+   浏览器就因为没有素材而全空；只存帧，就改不了采样参数。所以要一起打包。
+
+   zip 里长这样：
+     project.json            参数 + 时间轴 + 每个方向的素材清单
+     assets/front.mp4        原始视频（视频源）
+     assets/back.gif         原始 GIF（GIF 源）
+     assets/left/0001.png    逐张 PNG 源（没有原始容器，就存位图）
+     extras/front/0001.png   手工「＋PNG」追加的帧
+     picks/front/01_c003.png 时间轴每一槽实际用到的帧
+     out/<name>.png          当前参数下导出的 Sprite Sheet
+     out/<name>_atlas.json   对应的图集
+     README.txt              这份说明
+
+   为什么自己写 zip 而不是引库：studio 是单文件、零依赖、能直接 file:// 打开
+   的，多一个 200KB 的依赖就把这个前提破了。存的是 STORE（不压缩）——PNG/mp4
+   本来就已经压过，再 deflate 一遍基本没有收益，却要多带一个压缩器。
+   读的时候两种都认：method 0 直接切片，method 8 交给浏览器自带的
+   DecompressionStream('deflate-raw')，所以系统自带的 zip 工具打出来的包也能导。
+
+   crc32 只是为了让压缩包合法（unzip / 7z / macOS 归档工具都会校验），
+   内容本身用不到它。 */
+
+const ZIP_CRC = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(u8) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = ZIP_CRC[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function dosStamp(d) {
+  return {
+    time: ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() / 2) & 31),
+    date: (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31),
+  };
+}
+
+/* entries: [{ name:'project.json', data:Uint8Array }] → 整个 zip 的字节 */
+function zipMake(entries) {
+  const enc = new TextEncoder();
+  const { time, date } = dosStamp(new Date());
+  const parts = [], central = [];
+  let offset = 0;
+
+  for (const e of entries) {
+    const nameB = enc.encode(e.name);
+    const data = e.data instanceof Uint8Array ? e.data : new Uint8Array(e.data);
+    const crc = crc32(data);
+
+    const lh = new Uint8Array(30 + nameB.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true);        // version needed
+    dv.setUint16(6, 0x0800, true);    // bit 11 = 文件名是 UTF-8
+    dv.setUint16(8, 0, true);         // method 0 = store
+    dv.setUint16(10, time, true);
+    dv.setUint16(12, date, true);
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, data.length, true);
+    dv.setUint32(22, data.length, true);
+    dv.setUint16(26, nameB.length, true);
+    dv.setUint16(28, 0, true);
+    lh.set(nameB, 30);
+    parts.push(lh, data);
+
+    const cd = new Uint8Array(46 + nameB.length);
+    const cv = new DataView(cd.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, time, true);
+    cv.setUint16(14, date, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, data.length, true);
+    cv.setUint32(24, data.length, true);
+    cv.setUint16(28, nameB.length, true);
+    cv.setUint32(42, offset, true);   // 本地头偏移
+    cd.set(nameB, 46);
+    central.push(cd);
+
+    offset += lh.length + data.length;
+  }
+
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, entries.length, true);
+  ev.setUint16(10, entries.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+
+  const all = parts.concat(central, [eocd]);
+  const total = all.reduce((s, p) => s + p.length, 0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const part of all) { out.set(part, p); p += part.length; }
+  return out;
+}
+
+async function inflateRaw(u8) {
+  if (typeof DecompressionStream === 'undefined')
+    throw new Error('当前浏览器不支持解压 deflate —— 请用本 Studio 保存的存档（不压缩）');
+  const st = new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(st).arrayBuffer());
+}
+
+/* → Map(name → Uint8Array)。只认 STORE / DEFLATE，zip64 会明确报错。 */
+async function zipParse(buf) {
+  const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  if (u8.length < 22) throw new Error('文件太小，不是 zip');
+
+  let eocd = -1;
+  const floor = Math.max(0, u8.length - 22 - 65535);
+  for (let i = u8.length - 22; i >= floor; i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('找不到 zip 目录结尾（文件损坏或不是 zip）');
+
+  const n = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const raw = new Map();
+
+  for (let i = 0; i < n; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('zip 中央目录损坏');
+    const method = dv.getUint16(p + 10, true);
+    const compSize = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const cmtLen = dv.getUint16(p + 32, true);
+    const lho = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nameLen));
+    if (compSize === 0xFFFFFFFF) throw new Error('不支持 zip64 存档，请用本 Studio 重新保存');
+
+    const lNameLen = dv.getUint16(lho + 26, true);
+    const lExtraLen = dv.getUint16(lho + 28, true);
+    const start = lho + 30 + lNameLen + lExtraLen;
+    raw.set(name, { method, data: u8.subarray(start, start + compSize) });
+
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+
+  const files = new Map();
+  for (const [name, e] of raw) {
+    if (name.endsWith('/')) continue;                       // 目录条目
+    if (e.method === 0) files.set(name, e.data);
+    else if (e.method === 8) files.set(name, await inflateRaw(e.data));
+    else throw new Error(`不支持的压缩方式 ${e.method}（${name}）`);
+  }
+  return files;
+}
+
+const MIME_BY_EXT = { mp4:'video/mp4', webm:'video/webm', mov:'video/quicktime',
+  m4v:'video/x-m4v', mkv:'video/x-matroska', gif:'image/gif', png:'image/png',
+  jpg:'image/jpeg', jpeg:'image/jpeg', webp:'image/webp', json:'application/json' };
+const mimeOfName = n => MIME_BY_EXT[String(n).split('.').pop().toLowerCase()]
+  || 'application/octet-stream';
+const EXT_BY_MIME = { 'video/mp4':'mp4', 'video/webm':'webm', 'video/quicktime':'mov',
+  'video/x-m4v':'m4v', 'video/x-matroska':'mkv', 'image/gif':'gif' };
+function extOfName(mime, name) {
+  if (name && /\.[a-z0-9]{2,4}$/i.test(name)) return name.split('.').pop().toLowerCase();
+  return EXT_BY_MIME[String(mime || '').toLowerCase()] || 'bin';
+}
+
+async function canvasPng(cv) {
+  const b = await new Promise(r => cv.toBlob(r, 'image/png'));
+  if (!b) throw new Error('canvas 编码 PNG 失败');
+  return new Uint8Array(await b.arrayBuffer());
+}
+
+function bitmapCanvas(bmp) {
+  const c = document.createElement('canvas');
+  c.width = bmp.width; c.height = bmp.height;
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  return c;
+}
+
+/* 存档专用的 PNG 编码。
+   H3 渲出来的幕布不是死平的：整幅带 ±1 噪点，PNG 于是完全压不动 ——
+   768² 一张 ~800KB，四方向 156 张就是 125MB。而落在键色附近的像素反正会被
+   抠成透明，把它们归一化成键色本身不改变任何可见结果，背景却重新变成一整
+   块纯色（实测 488KB → 109KB，四方向 125MB → 28MB）。
+
+   eps 取 14 色度距离：覆盖得掉噪点幅度，离角色边缘还很远（边缘是平滑过渡，
+   差分是一串 0→1 的中间值，会被下面这个阈值切开而不是整片误伤）。 */
+const ZIP_FLAT_EPS = 14;
+
+function squeezeCanvas(cv) {
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  const id = ctx.getImageData(0, 0, cv.width, cv.height);
+  const d = id.data;
+  const [kr, kg, kb] = P.key;
+  const kcb = CB(kr, kg, kb), kcr = CR(kr, kg, kb);
+  const lim = ZIP_FLAT_EPS * ZIP_FLAT_EPS;
+  for (let o = 0; o < d.length; o += 4) {
+    if (d[o + 3] === 0) { d[o] = kr; d[o+1] = kg; d[o+2] = kb; continue; }
+    const dx = CB(d[o], d[o+1], d[o+2]) - kcb;
+    const dy = CR(d[o], d[o+1], d[o+2]) - kcr;
+    if (dx * dx + dy * dy <= lim) { d[o] = kr; d[o+1] = kg; d[o+2] = kb; }
+  }
+  ctx.putImageData(id, 0, 0);
+  return cv;
+}
+
+const PROJ_README = cfg => [
+  'Sprite Sheet Studio 工程存档',
+  '',
+  `保存时间：${cfg.savedAt}`,
+  `文件名前缀：${cfg.params.fname}`,
+  '',
+  '目录说明',
+  '  project.json          面板参数、四方向时间轴、素材清单 —— 导入时先读它',
+  '  assets/               这个工程用到的原始素材（mp4 / gif / 逐张 PNG）',
+  '  extras/               「＋PNG」手工追加到候选池末尾的帧',
+  '  picks/                时间轴每一槽实际取的那一帧（01_c003 = 第 1 槽取第 3 个候选）',
+  '  out/                  用当前参数导出的 Sprite Sheet 与 atlas JSON',
+  '',
+  '恢复：打开 Sprite Sheet Studio → 右下角「导入工程」→ 选这个 zip。',
+  '素材会重新跑一遍抽帧 / 抠图 / 缩放 / 调色板，然后时间轴按 picks 的顺序还原。',
+  '',
+  '关于体积：assets/ 里的逐帧源图把「注定会被抠成透明的幕布像素」归一化成了',
+  '键色，可见内容与原始素材逐像素一致，但单张从 ~800KB 降到 ~110KB。',
+  '视频 / GIF 源存的是原始文件，不做任何改动。',
+  '',
+].join('\n');
+
+/* 打包成字节（不下载）。saveProject 与调试钩子共用。 */
+async function projectZipBytes() {
+  const enc = new TextEncoder();
+  const entries = [];
+  const tmeta = {};
+
+  for (const t of tracks) {
+    const m = { kind:'none', assets:[], extras:[], picks:0,
+                frames:t.frames.length, cand:t.cand | 0, slots:lenOf(t.id),
+                duration:t.duration || 0, vw:t.vw || 0, vh:t.vh || 0,
+                gait:t.gait || null, stat:t.stat || null, name:t.srcName || '' };
+
+    if (P.mirrorRight && t.id === 'right') {
+      /* 镜像出来的右向没有独立素材，存档里只留一个标记，
+         导入时重新由左向翻转 —— 存一份翻过的位图反而会和左向失同步。 */
+      m.kind = 'mirror';
+    } else if (t.srcKind === 'video' && t.srcBlob) {
+      const nm = `assets/${t.id}.${extOfName(t.srcBlob.type, t.srcName)}`;
+      entries.push({ name: nm, data: new Uint8Array(await t.srcBlob.arrayBuffer()) });
+      m.kind = 'video'; m.assets = [nm];
+      m.name = t.srcName || nm.split('/').pop();
+    } else if (t.srcKind === 'gif' && t.srcBlob) {
+      const nm = `assets/${t.id}.gif`;
+      entries.push({ name: nm, data: new Uint8Array(await t.srcBlob.arrayBuffer()) });
+      m.kind = 'gif'; m.assets = [nm];
+      m.name = t.srcName || `${t.id}.gif`;
+    } else if (t.images && t.images.length) {
+      /* 逐张 PNG 源：没有原始容器文件可存，直接存位图（无损）。
+         导入时按顺序还原，采样结果因此完全一致。 */
+      m.kind = 'images';
+      for (let i = 0; i < t.images.length; i++) {
+        const nm = `assets/${t.id}/${String(i + 1).padStart(4, '0')}.png`;
+        entries.push({ name: nm, data: await canvasPng(squeezeCanvas(bitmapCanvas(t.images[i]))) });
+        m.assets.push(nm);
+      }
+    }
+
+    if (t.extras && t.extras.length) {
+      for (let i = 0; i < t.extras.length; i++) {
+        const nm = `extras/${t.id}/${String(i + 1).padStart(4, '0')}.png`;
+        entries.push({ name: nm, data: await canvasPng(squeezeCanvas(bitmapCanvas(t.extras[i]))) });
+        m.extras.push(nm);
+      }
+    }
+
+    if (t.frames.length) {
+      const arr = arrOf(t.id);
+      for (let i = 0; i < arr.length; i++) {
+        const f = t.frames[arr[i]];
+        if (!f) continue;
+        const nm = `picks/${t.id}/${String(i + 1).padStart(2, '0')}_c${String(arr[i]).padStart(3, '0')}.png`;
+        entries.push({ name: nm, data: await canvasPng(f.canvas) });
+        m.picks++;
+      }
+    }
+    tmeta[t.id] = m;
+  }
+
+  let sheet = null;
+  try {
+    const sh = buildSheet();
+    if (sh) {
+      entries.push({ name: `out/${sh.name}`, data: await canvasPng(sh.canvas) });
+      entries.push({ name: `out/${sh.atlasName}`,
+                     data: enc.encode(JSON.stringify(sh.atlas, null, 2)) });
+      sheet = { png:`out/${sh.name}`, atlas:`out/${sh.atlasName}`,
+                cols:sh.cols, rows:sh.rowCount, w:sh.W, h:sh.H };
+    }
+  } catch (e) {
+    console.warn('存档：导出表失败，这次不带 out/', e);
+  }
+
+  const cfg = {
+    app: 'Sprite Sheet Studio', schema: 1, savedAt: new Date().toISOString(),
+    params: JSON.parse(JSON.stringify(P)),
+    state: { active, seqSel, cellW:G.cellW, cellH:G.cellH, outW:G.outW, outH:G.outH, palN:G.palN },
+    seqs: Object.fromEntries(DIRS.map(d => [d.id, arrOf(d.id).slice()])),
+    tracks: tmeta, sheet,
+    source: { frames: FRAME_BASE, videos: VIDEO_BASE },
+  };
+
+  entries.unshift({ name: 'project.json', data: enc.encode(JSON.stringify(cfg, null, 2)) });
+  entries.push({ name: 'README.txt', data: enc.encode(PROJ_README(cfg)) });
+  return { bytes: zipMake(entries), cfg, files: entries.length };
+}
+
+function projFileName() {
+  const d = new Date(), z = n => String(n).padStart(2, '0');
+  return `${P.fname || 'sprite'}_${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}`
+       + `_${z(d.getHours())}${z(d.getMinutes())}.zip`;
+}
+
+async function saveProject() {
+  if (!live().length && !tLen()) toast('还没有素材，仍会保存当前参数', false);
+  setBusy(true);
+  $('#hudMode').textContent = '打包工程…';
+  try {
+    const { bytes, cfg, files } = await projectZipBytes();
+    download(new Blob([bytes], { type:'application/zip' }), projFileName());
+    const mb = bytes.length / 1048576;
+    /* 走 ?frames= 目录进来的是「逐张 PNG 源」，包自然大；说清楚原因，
+       免得用户以为打包出了 bug。想小一点就用 ?videos= 或直接拖 mp4/gif。 */
+    toast(`已保存工程 · ${files} 个文件 · ${mb.toFixed(1)} MB`
+          + (mb > 60 ? '（含逐帧 PNG 源；用视频/GIF 素材打包会小得多）' : ''));
+    console.log('工程存档', cfg, mb.toFixed(1) + 'MB');
+  } catch (e) {
+    console.error(e);
+    toast('保存工程失败: ' + e.message, true);
+  } finally {
+    setBusy(false);
+    $('#hudMode').textContent = '';
+  }
+}
+
+/* 从存档字节原样恢复。失败时抛错，交给调用方提示。 */
+async function restoreProject(buf) {
+  const files = await zipParse(buf);
+  const head = files.get('project.json');
+  if (!head) throw new Error('zip 里没有 project.json —— 不是 Studio 工程存档');
+  const cfg = JSON.parse(new TextDecoder().decode(head));
+  if (cfg.app !== 'Sprite Sheet Studio') console.warn('未知来源的存档，按 schema 1 尽力恢复', cfg.app);
+
+  setBusy(true);
+  $('#hudMode').textContent = '导入工程…';
+  try {
+    /* 1. 清空现有状态（连 blob URL 一起回收，否则连续导入会漏内存） */
+    for (const t of tracks) {
+      if (t.url) URL.revokeObjectURL(t.url);
+      Object.assign(t, { video:null, url:null, images:null, raw:[], keyed:[], scaled:[], frames:[],
+                         extras:[], nExtra:0, dirty:true, frozen:false, mirrorSig:'',
+                         stat:null, gait:null, srcKind:null, srcBlob:null, srcName:'',
+                         keySig:null, sampleRev:0 });
+      delete t.__bak;
+    }
+    for (const d of DIRS) seqs[d.id] = [];
+    seqSel = 0; playIdx = 0;
+    window.__lastSheet = null; window.__lastAtlas = null; window.__sheetName = '';
+
+    /* 2. 参数（只认 P 里已有的键，存档里多出来的字段不会污染状态） */
+    const par = cfg.params || {};
+    for (const k of Object.keys(P)) if (k in par) P[k] = par[k];
+    if (!Array.isArray(P.key) || P.key.length !== 3) P.key = [35, 233, 20];
+    P.key = P.key.map(v => Math.max(0, Math.min(255, Number(v) | 0)));
+    syncUI();
+
+    /* 3. 素材。镜像模式先关掉：镜像那一步要求左向已经抽过帧，
+       所以要等下面对 buildAll 跑完再打开（见第 5 步）。 */
+    const wasMirror = !!P.mirrorRight;
+    P.mirrorRight = false;
+    const notes = [];
+    for (const d of DIRS) {
+      const m = (cfg.tracks || {})[d.id];
+      const t = tOf(d.id);
+      if (!m || m.kind === 'none' || m.kind === 'mirror') continue;
+      try {
+        if (m.kind === 'video') {
+          const b = files.get((m.assets || [])[0]);
+          if (!b) throw new Error('缺少视频文件');
+          await putVideo(t, new Blob([b], { type: mimeOfName(m.assets[0]) }), m.name || '');
+        } else if (m.kind === 'gif') {
+          const b = files.get((m.assets || [])[0]);
+          if (!b) throw new Error('缺少 GIF 文件');
+          await putGif(t, new File([b], m.name || `${d.id}.gif`, { type:'image/gif' }));
+        } else if (m.kind === 'images') {
+          const bmps = [];
+          for (const nm of (m.assets || [])) {
+            const b = files.get(nm);
+            if (b) bmps.push(await createImageBitmap(new Blob([b], { type:'image/png' })));
+          }
+          if (!bmps.length) throw new Error('帧图读不出来');
+          await putImages(t, bmps);
+        }
+        if (m.extras && m.extras.length) {
+          const ex = [];
+          for (const nm of m.extras) {
+            const b = files.get(nm);
+            if (b) ex.push(await createImageBitmap(new Blob([b], { type:'image/png' })));
+          }
+          t.extras = ex;
+        }
+      } catch (e) {
+        console.warn(d.id, e);
+        notes.push(`${t.label}：${e.message}`);
+      }
+    }
+
+    /* 4. 重跑管线：抽帧 → 抠图 → 缩放 → 调色板 → 锚点 → 合成 */
+    await buildAll({ resample:true, resetSeq:true });
+
+    /* 5. 镜像（左向已有 raw，这一步才有效） */
+    if (wasMirror) {
+      P.mirrorRight = true;
+      await buildAll({ resample:false, resetSeq:false });
+    }
+
+    /* 6. 时间轴：存档里的候选序号直接套回去。
+       越界只可能来自「存档比当前候选少」（素材损坏），夹紧而不是丢弃整条。 */
+    let clamped = 0;
+    for (const d of DIRS) {
+      const t = tOf(d.id), arr = (cfg.seqs || {})[d.id];
+      if (!t.frames.length || !Array.isArray(arr)) { seqs[d.id] = []; continue; }
+      if (arr.some(i => (i | 0) >= t.frames.length)) clamped++;
+      seqs[d.id] = arr.map(i => wrapIdx(Number(i) | 0, t.frames.length));
+    }
+
+    /* 7. 已经导出过的表也带回来了，下载按钮不用再点一次导出 */
+    if (cfg.sheet) {
+      const pb = files.get(cfg.sheet.png), ab = files.get(cfg.sheet.atlas);
+      if (pb) {
+        const bmp = await createImageBitmap(new Blob([pb], { type:'image/png' }));
+        const cv = document.createElement('canvas');
+        cv.width = bmp.width; cv.height = bmp.height;
+        cv.getContext('2d').drawImage(bmp, 0, 0);
+        window.__lastSheet = { canvas:cv, blob:new Blob([pb], { type:'image/png' }) };
+        window.__sheetName = String(cfg.sheet.png).split('/').pop();
+      }
+      if (ab) window.__lastAtlas = JSON.parse(new TextDecoder().decode(ab));
+    }
+
+    /* 8. UI：当前方向、光标槽、布局 */
+    const st = cfg.state || {};
+    active = Math.min(DIRS.length - 1, Math.max(0, Number(st.active) | 0));
+    seqSel = Math.min(Math.max(0, tLen() - 1), Math.max(0, Number(st.seqSel) | 0));
+    playIdx = seqSel;
+    $('#pwrap').dataset.key = '';       // 强制重建预览面板
+    syncUI(); renderAll();
+
+    const dirsN = live().length, slotsN = tLen();
+    toast(`已导入工程 · ${dirsN} 个方向 · ${slotsN} 槽`
+          + (clamped ? ` · ${clamped} 个方向帧号被夹紧` : '')
+          + (notes.length ? ` · 缺：${notes.join(' / ')}` : ''));
+    return cfg;
+  } finally {
+    setBusy(false);
+    $('#hudMode').textContent = '';
+  }
+}
+
+async function openProjectFile(file) {
+  if (!file) return;
+  try {
+    await restoreProject(await file.arrayBuffer());
+  } catch (e) {
+    console.error(e);
+    toast('导入失败: ' + e.message, true);
+  }
 }
 
 /* ===================== 渲染总入口 ===================== */
@@ -3746,6 +4275,14 @@ function bind() {
   $('#fname').oninput = e => { P.fname = e.target.value || 'walk'; };
   $('#btnPng').onclick = exportSheet;
   $('#btnJson').onclick = exportJson;
+  /* 工程存档：打包带着素材走，导入时按 picks 的顺序还原时间轴 */
+  $('#btnProjSave').onclick = saveProject;
+  $('#btnProjOpen').onclick = () => $('#projFile').click();
+  $('#projFile').onchange = e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (f) openProjectFile(f);
+  };
   $('#mClose').onclick = () => $('#modal').classList.remove('on');
   $('#mSave').onclick = downloadSheet;
   $('#mJson').onclick = exportJson;
@@ -3772,6 +4309,12 @@ window.__seq = () => seqs;
 window.__phase = () => Object.fromEntries(live().map(t => [t.id, candAt(t.id, 0) || 0]));
 window.__handleFiles = handleFiles;
 window.__setSeq = o => { for (const k in o) seqs[k] = o[k]; renderAll(); };
+/* 工程存档的调试钩子：不开下载框也能拿到字节 / 灌回状态，方便自测 */
+window.__projZip = async () => (await projectZipBytes()).bytes;
+window.__projCfg = async () => (await projectZipBytes()).cfg;
+window.__projLoad = u8 => restoreProject(u8);
+window.__saveProject = saveProject;
+window.__buildSheet = buildSheet;
 
 /* ===================== 启动 ===================== */
 bind();

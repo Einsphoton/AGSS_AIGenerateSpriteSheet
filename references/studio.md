@@ -290,6 +290,57 @@ Then run `bake_gifs.py` on the exported PNG to get shareable previews.
 
 ---
 
+## Project archive — 保存工程 / 导入工程
+
+The studio's state lives in three places: the panel parameters (`P`), four
+timeline index lists (`seqs`), and the material itself (mp4 / gif / PNG
+sequence). Saving only the parameters leaves a file that opens empty on another
+machine; saving only the frames leaves an animation you cannot re-sample. So
+**保存工程** packs all three plus the current sheet into one `.zip`, and
+**导入工程** puts it back.
+
+```
+project.json            params + seqs + per-direction asset manifest
+assets/front.mp4        original video bytes          (source was a video)
+assets/back.gif         original GIF bytes            (source was a GIF)
+assets/left/0001.png    bitmaps, one per source frame (source was a PNG sequence)
+extras/front/0001.png   frames added by hand with ＋PNG
+picks/front/01_c003.png timeline slot 1 uses candidate 3 — one PNG per slot
+out/<name>.png          the sheet, exported with the current params
+out/<name>_atlas.json   its atlas
+README.txt              the same map, so an unzipped folder is self-explaining
+```
+
+On import the material is reloaded, then **the pipeline is re-run** (sample →
+key → scale → palette → anchor → compose) and `seqs` is re-applied on top. That
+is why the archive stores source material rather than finished frames: the
+parameters stay live, so tolerance, palette, cell grid and picking all still work
+after a restore. `picks/` is the human-checkable record of what the timeline
+actually took, and `out/` means the download button works without re-exporting.
+
+Measured round-trip on a 4-view, 39-frame project: params, timeline, source
+kinds, cell geometry and a SHA-256 of the rebuilt sheet all come back identical
+(`studio/test/archive.e2e.js` asserts exactly that, for all three source kinds).
+
+**Size.** Video and GIF sources are stored byte-for-byte, so those archives are
+small (9 MB for three 1.6 s clips). A PNG *sequence* source is the expensive
+case — 4 × 39 frames at 768² is ~125 MB, because H3's backdrop carries ±1 noise
+and PNG cannot run-length it. The writer normalises pixels that are within 14
+chroma units of the key colour to the key colour itself: those pixels are keyed
+to alpha 0 anyway, the visible result is unchanged, and the backdrop becomes flat
+again (488 KB → 109 KB per frame, 125 MB → 28 MB for the set). Nothing is
+lossy-compressed — no JPEG, no palette reduction.
+
+**Import routes:** the 导入工程 button, or drop the `.zip` on the left panel
+(`handleFiles` routes zips there). Reader accepts STORE and DEFLATE, so a zip
+repacked by an OS tool still imports; zip64 is refused with a clear message.
+
+**Test:** `studio/test/archive.e2e.js` drives a real Chrome over CDP and covers
+all three source kinds — needs a running `serve.py` and a writable `SERVE_ROOT`,
+both described in the file header.
+
+---
+
 ## Keyboard / URL
 
 `?frames=/path/to/frames` loads `<path>/{front,back,left,right}/`. For each

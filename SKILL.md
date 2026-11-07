@@ -5,7 +5,7 @@ display_name_en: Pixel Sprite Sheet Pipeline
 description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。使用前先询问用户走哪条路线：①直接渲染目标角色（一步到位）；②先渲染人偶代理动作，再用同一 seed 和同一套节拍把人偶替换成目标角色（两步，复杂角色动作更干净）。之后负责切图 → 参考图补白与幕布（防裁切、防首帧黑底）→ MiniMax H3 图生视频（ComfyUI）→ 帧级质检（边缘裁切/空帧/幕布）→ Sprite Sheet Studio 抠图与逐帧挑拣 → 导出 PNG + Atlas；每次渲染的原始视频归档到 videos/ 并带版本号，且每次交付都会把源视频直接放进对话播放（不只给路径）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画"时使用。
 description_en: Generate pixel-game character animation sprite sheets from a 4-view character reference. The user supplies view images and a one-line description of the animation (walk, run, attack, cast, hurt, jump, ...); the skill runs split → MiniMax H3 image-to-video (ComfyUI) → chroma key → frame picking → export PNG + atlas, archives every render's source clip into a version-numbered videos/ folder, and ships an interactive Sprite Sheet Studio that imports video, animated GIF and PNG (PNGs are appended to the candidate pool), reloads any archived version, and previews all four directions at once over a switchable backdrop. Use when asked to turn a character into a sprite sheet, walk cycle, or 2D game animation frames.
 description: Generate pixel-game character animation sprite sheets from a 4-view character reference. Use when asked to turn a character into a sprite sheet, walk cycle, attack/cast/hurt animation, or 2D game animation frames. Always ask first whether to animate the target character directly or to block the motion with a mannequin proxy and re-render it onto the character. Runs split → reference prep → MiniMax H3 (ComfyUI) → chroma key → frame QC → studio picking → PNG + atlas, archives source clips under version numbers in videos/, and ships an interactive Sprite Sheet Studio (imports video / GIF / PNG, four-direction preview, switchable backdrop).
-version: 1.4.0
+version: 1.5.0
 ---
 
 # Pixel Sprite Sheet Pipeline
@@ -352,6 +352,11 @@ the studio they:
 - **＋PNG / 拖 PNG** — hand-picked PNGs are appended to the candidate pool 1:1
   (purple `附加` badge, `清附加` to remove)
 - **版本化视频** — pick `v01…vNN` and load that render's mp4s to re-sample
+- **保存工程 / 导入工程** — pack params, four timelines, the material and the
+  exported sheet into one `.zip`, and restore it on any machine (the pipeline is
+  re-run on import, so the params stay editable). Drop the zip on the left panel
+  to import. Reach for it when a picking session has to survive a restart, or
+  when the user wants the project back in their hands rather than a screenshot
 - export PNG + atlas JSON from the bottom bar
 
 `?frames=` no longer needs a `manifest.json`: if there is none the studio reads

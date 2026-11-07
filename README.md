@@ -46,7 +46,8 @@ magenta, 752²) with its prompt in `PROMPT.txt`, and the matching beat text in
 | --- | --- |
 | `SKILL.md` | The agent skill definition — the pipeline, in order, with the rules that matter |
 | `scripts/` | The pipeline as plain CLI tools (`split_views`, `prep_ref`, `generate`, `qc`, `mirror`, `manifest`, `serve`, `bake_gifs`) |
-| `studio/index.html` | **Sprite Sheet Studio** — single file, no build step: key, sample, pick frames, preview 4 directions, export |
+| `studio/index.html` | **Sprite Sheet Studio** — single file, no build step: key, sample, pick frames, preview 4 directions, save/restore the whole project as a `.zip`, export |
+| `studio/test/` | `archive.e2e.js` — drives real Chrome over CDP to assert the project archive round-trips (all three source kinds) |
 | `references/` | `studio.md` (interaction model), `pitfalls.md` (what breaks H3 generation), `prompt-recipes.md`, `proxy-pass.md` (route B) |
 | `templates/` | A runnable example (`run-example.sh`), a subject sample, a **mannequin proxy** (`mannequin/`) and reusable beat text (`beats/`) |
 
@@ -133,6 +134,11 @@ Two things the studio does that are worth knowing before the first run:
 - **多方向墙** (`⤢` beside the 候选帧 count) expands the pool into four groups of two columns,
   one group per direction, rows aligned across groups (row *i* = candidates 2*i* / 2*i*+1).
   A click edits its own group, so key frames get picked while all four views stay in sight.
+- **工程存档** (`保存工程` / `导入工程`, bottom bar) packs params + four timelines +
+  the material itself + the exported sheet into one zip, and restores it exactly — re-running
+  the pipeline on import, so tolerance, palette and cell grid stay editable afterwards.
+  Drop the zip on the left panel to import. Layout and size notes in
+  [`references/studio.md`](references/studio.md#project-archive--保存工程--导入工程).
   Collapsed, the pool is single-direction again.
 
 ## Every delivery plays the render
