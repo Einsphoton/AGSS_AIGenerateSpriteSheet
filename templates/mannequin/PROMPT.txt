@@ -1,20 +1,32 @@
-Image prompt used to make the bundled proxy reference (route B).
+Image prompt used to make a proxy reference (route B) when you need one whose
+proportions or prop match a specific character.
 Regenerate a 2x2 four-view sheet with an image model, then split_views.py it,
 then run check_facing.py on the result.
 
 NOTE: the bundled mannequin in this folder is not made from this prompt any
 more — it is drawn procedurally by ../../scripts/mannequin.py, because an image
 model will not hold one skeleton across four views, nor keep the silhouette
-identical while changing the material. Use this prompt when you need a proxy
-whose weapon or proportions match a specific character, and treat the output as
-a draft: check_facing.py decides whether it is usable.
+identical while changing the material. Prefer the script; it can also add a
+weapon per variant (--weapon sword|dual-sword|staff|bow). Use this prompt when
+you need a body plan the script does not draw — four arms, a tail, a quadruped,
+an unusual height-to-width ratio — and treat the output as a draft: the audit
+decides whether it is usable.
+
+WHY IT ASKS FOR EMPTY HANDS
+The proxy answers "does the body motion read?". The prop belongs to the
+character pass and comes from the character's own reference. H3 inherits props
+from the reference image the same way it inherits silhouette, so a proxy that
+ships two swords teaches an unarmed character to grow two swords, and its prop
+contradicts a staff or bow user. Put a weapon in this prompt only when the
+weapon *is* the motion — a long shaft, a bow's arc, a two-handed grip — and edit
+the HANDS paragraph below.
 
 WHY THIS PROMPT SPELLS OUT THE BACK
 A reference whose front and back look the same makes the model turn the figure
 around mid-clip: it reads the picture far more than the prompt, so "pure rear
 view" in front of a frontal-looking drawing is a contradiction. The fix is a
-*different material* on the back — never a different outline, because the
-character pass inherits the proxy's silhouette.
+*different material* on the back — never a different outline, because the character pass
+inherits the proxy's silhouette.
 --------------------------------------------------------------------------
 
 Pixel art game sprite sheet, 2x2 grid of four panels on pure flat magenta
@@ -22,11 +34,11 @@ Pixel art game sprite sheet, 2x2 grid of four panels on pure flat magenta
 The same plain wooden artist's mannequin character in all four panels: pale
 birch wood, round ball joints at shoulders elbows wrists hips knees ankles,
 smooth featureless egg-shaped head with no face, no hair, no clothing, no armor.
-It holds one straight grey steel short sword in each hand, blades angled down
-and outward, the tips clear of the legs.
-Keep identical body proportions, identical sword design and identical scale in
-all four panels. Crisp hard-edged pixel clusters, limited flat palette, no
-anti-aliasing, centered characters with margins.
+EMPTY HANDS: both hands are open and empty, fingers relaxed and slightly apart,
+no weapon, no tool, no prop of any kind, nothing held in either hand.
+Keep identical body proportions and identical scale in all four panels. Crisp
+hard-edged pixel clusters, limited flat palette, no anti-aliasing, centered
+characters with margins.
 
 THE FRONT AND THE BACK ARE DIFFERENT MATERIALS — this is the critical part:
 
@@ -45,14 +57,14 @@ TOP-RIGHT back view, we see the back of the head and the back of the torso,
 
 BOTTOM-LEFT  TRUE SIDE PROFILE facing image-LEFT: body rotated exactly 90
           degrees, only ONE arm and ONE leg visible, torso a thin vertical
-          silhouette, head profile points left, the two swords overlap and point
-          down-left. Seen from the side, the rear half of the torso is the dark
-          leather panel and the front half is pale birch, and the back of the
-          head is stained dark.
+          silhouette, head profile points left, the open hand empty at the hip.
+          Seen from the side, the rear half of the torso is the dark leather
+          panel and the front half is pale birch, the back of the head is
+          stained dark, and the toes point left.
 
 BOTTOM-RIGHT TRUE SIDE PROFILE facing image-RIGHT: the same, mirrored, head
           profile points right, the dark back panel and the stained nape are now
-          on the right-hand side of each form.
+          on the right-hand side of each form, the toes point right.
 
 The outline and the pose of the front and the back are IDENTICAL — the two sides
 differ only in material and in the details listed above.

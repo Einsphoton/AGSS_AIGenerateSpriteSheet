@@ -1,6 +1,14 @@
 {
  "generator": "scripts/mannequin.py",
  "scale": 3,
+ "weapon": "none",
+ "weapon_note": "empty hands, open fingers — the default, and the only variant that commits to nothing, so the character pass is free to add any prop",
+ "hand_pose": "open",
+ "prop_policy": [
+  "the proxy blocks body mechanics; the prop belongs to the character pass and comes from the character's own reference",
+  "so the default is empty hands — a weapon drawn here is a weapon the character pass inherits, right down to an unarmed character growing blades",
+  "add one only when the weapon is part of the arc or the mass: a long shaft, a bow, a two-handed grip"
+ ],
  "unit_canvas": [
   64,
   88
@@ -27,17 +35,18 @@
  "invariants": [
   "front and back share one silhouette on purpose: the character pass inherits the proxy silhouette, so an extra bump becomes a backpack",
   "identical head-to-heel height and pixel scale in all four views",
-  "one arm and one leg in the profile views"
+  "one arm and one leg in the profile views",
+  "every weapon shares the body pose, so variants stay comparable"
  ],
  "rule": "the difference between the two sides is material, never outline",
  "verify": "python scripts/check_facing.py C:\\Users\\renjiangfeng\\WorkBuddy\\2026-11-11-21-53-15\\repo\\templates\\mannequin",
  "facing_audit": {
   "verdict": "PASS",
   "score": 0.443,
-  "whole": 0.175,
-  "torso": 0.278,
+  "whole": 0.192,
+  "torso": 0.279,
   "head": 0.443,
-  "silhouette_iou": 0.989,
-  "mirror_iou": 0.992
+  "silhouette_iou": 0.986,
+  "mirror_iou": 0.991
  }
 }

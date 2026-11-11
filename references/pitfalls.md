@@ -113,6 +113,29 @@ reference), not the prompt.
 
 ---
 
+## Props in the reference become props in the output
+
+Same mechanism as above, one level up: H3 inherits **props** from the reference
+as readily as it inherits silhouette. A proxy mannequin holding two swords does
+not mean "here is a generic body" — it means "this body has two swords", and the
+character pass reproduces them. An unarmed character comes back armed; a staff
+user gets a proxy whose prop fights their own.
+
+This is why the bundled proxy has **empty hands**, and why `--weapon` exists only
+for the cases where the prop *is* the motion (a shaft's arc, a bow's open limb, a
+two-handed grip). The prop belongs to the character pass, which owns it through
+`--subject` and the character's own reference.
+
+Two rules that follow:
+
+- **Never remove an inherited prop with wording.** "no swords" is a negation, and
+  negations are inverted (see above) — it produces more swords.
+- **Match the two passes.** If the proxy has a blade, the character pass's
+  `--subject` has to name the same thing, or the second pass spends its attention
+  deleting the blade instead of following the beats.
+
+---
+
 ## Front and back look the same
 
 The most expensive version of *first frame dominates*, and the only one where a

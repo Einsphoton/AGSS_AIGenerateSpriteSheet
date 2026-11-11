@@ -186,12 +186,12 @@ PRESETS: dict[str, dict] = {
         "strides": 1,
         "limits": ["arms", "torso", "legs"],
         "beats": [
-            (0.00, "the character winds up, the weapon arm drawing back and up "
+            (0.00, "the character winds up, the striking arm drawing back and up "
                    "while the torso rotates away from the target"),
             (0.25, "the arm drives forward and down in a single fast strike, the "
                    "torso rotating into the blow, the front foot planting"),
             (0.50, "the strike lands and the body settles into the follow-through, "
-                   "the weapon arm extended"),
+                   "the striking arm extended"),
             (0.75, "the arm recovers and the torso unwinds back toward the "
                    "opening stance"),
         ],

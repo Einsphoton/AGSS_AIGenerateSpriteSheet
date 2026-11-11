@@ -46,7 +46,9 @@ if [ -f "$BEATS" ]; then
 else
   # a preset action can run without beats; a custom one cannot
   echo "   no $BEATS — falling back to the '$ACTION' preset."
-  echo "   example beat file: $SKILL/templates/beats/attack-dual-sword.txt"
+  echo "   example beat files: $SKILL/templates/beats/walk.txt (unarmed, the neutral one)"
+  echo "                       $SKILL/templates/beats/attack-dual-sword.txt (needs a"
+  echo "                       dual-sword proxy: mannequin.py --weapon dual-sword)"
 fi
 python "$SKILL/scripts/generate.py" \
   --views "$PROJ/views" \

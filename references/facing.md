@@ -199,8 +199,10 @@ cheapest tell — if it disappears mid-clip, the model turned the head around.
 ## Regenerating the mannequin
 
 ```bash
-python scripts/mannequin.py                     # -> templates/mannequin/
+python scripts/mannequin.py                     # -> templates/mannequin/  (empty hands)
 python scripts/mannequin.py --out /tmp/mq --scale 4 --key '#00FF00'
+python scripts/mannequin.py --weapon staff --out /tmp/mq   # same body, one prop
+python scripts/mannequin.py --all               # every variant + overview.png
 ```
 
 Four views are projections of one skeleton, so proportions, scale and the
@@ -208,6 +210,13 @@ head-to-heel line are identical by construction — the thing an image model is
 worst at. The per-view PNGs are transparent (so `prep_ref.py` measures the bbox
 exactly); `sheet_2x2.png` and `turnaround.png` are the magenta previews for a
 human to eyeball.
+
+The default has **empty hands**: a prop in the proxy reference is inherited by
+the character pass (see `pitfalls.md#props-in-the-reference-become-props-in-the-output`),
+so a weapon is opt-in and only when the weapon is the motion. The material split
+that this audit measures is in the body, not in the props, so adding or removing
+a weapon does not change the verdict — every variant still scores the same
+`material_tv`, which is a useful thing to check when you edit the drawing.
 
 If you would rather generate the proxy with an image model, `templates/mannequin/PROMPT.txt`
 carries a prompt that asks for the same material split — then run

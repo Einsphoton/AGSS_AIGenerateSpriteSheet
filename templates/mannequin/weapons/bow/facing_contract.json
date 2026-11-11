@@ -1,0 +1,52 @@
+{
+ "generator": "scripts/mannequin.py",
+ "scale": 3,
+ "weapon": "bow",
+ "weapon_note": "a vertical bow in the figure's left hand, string slack, held at rest — for locomotion and idle. A draw needs its own pose, which is a custom proxy (templates/mannequin/PROMPT.txt), not this flag",
+ "hand_pose": "grip",
+ "prop_policy": [
+  "the proxy blocks body mechanics; the prop belongs to the character pass and comes from the character's own reference",
+  "so the default is empty hands — a weapon drawn here is a weapon the character pass inherits, right down to an unarmed character growing blades",
+  "add one only when the weapon is part of the arc or the mass: a long shaft, a bow, a two-handed grip"
+ ],
+ "unit_canvas": [
+  64,
+  88
+ ],
+ "figure_units": 77.5,
+ "front_markers": [
+  "pale birch chest and face",
+  "leather harness in a V meeting a brass ring at the sternum",
+  "brass belt buckle at centre",
+  "toe split on each foot"
+ ],
+ "back_markers": [
+  "dark leather back panel with light X lacing over the shoulder blades",
+  "vertical spine seam from the neck to the waist",
+  "stained walnut nape over the lower part of the back of the head",
+  "plain belt, no buckle",
+  "heel pad instead of a toe split"
+ ],
+ "profile_markers": [
+  "rear half of the torso is the leather panel, front half pale wood",
+  "nape stained on the back of the skull",
+  "toes point the way the figure faces"
+ ],
+ "invariants": [
+  "front and back share one silhouette on purpose: the character pass inherits the proxy silhouette, so an extra bump becomes a backpack",
+  "identical head-to-heel height and pixel scale in all four views",
+  "one arm and one leg in the profile views",
+  "every weapon shares the body pose, so variants stay comparable"
+ ],
+ "rule": "the difference between the two sides is material, never outline",
+ "verify": "python scripts/check_facing.py C:\\Users\\renjiangfeng\\WorkBuddy\\2026-11-11-21-53-15\\repo\\templates\\mannequin\\weapons\\bow",
+ "facing_audit": {
+  "verdict": "PASS",
+  "score": 0.443,
+  "whole": 0.181,
+  "torso": 0.27,
+  "head": 0.443,
+  "silhouette_iou": 0.978,
+  "mirror_iou": 0.973
+ }
+}

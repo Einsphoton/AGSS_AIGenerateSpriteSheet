@@ -49,7 +49,7 @@ own markers. Full diagnosis: [`references/facing.md`](references/facing.md).
 
 |  | **A — direct** | **B — proxy pass** |
 | --- | --- | --- |
-| what gets rendered | the target character, once | a plain mannequin, then the character, **same seed + same beats** |
+| what gets rendered | the target character, once | a plain, empty-handed mannequin, then the character, **same seed + same beats** |
 | cost | 1× (≈2–4 min per view) | 2× |
 | motion when the character is busy | H3 spends attention on cape / plume / layered armour and the beats go mushy | the mannequin has nothing to get wrong, so the beats land cleanly and the second pass inherits the timing |
 | wins when | simple silhouette, one weapon, tight budget | capes, long hair, plumes, dual weapons, layered armour, or the user wants to judge the motion before committing |
@@ -64,11 +64,43 @@ a deliverable: the character pass produces the frames, and the user keys and
 picks those in Sprite Sheet Studio like any other run. Never hand over mannequin
 frames, and never script the export to skip the studio.
 
-A neutral dual-sword mannequin ships in `templates/mannequin/` — four transparent
-views drawn from one skeleton by `scripts/mannequin.py`, with `sheet_2x2.png` and
-`turnaround.png` as magenta previews, `facing_contract.json` as the build's own
-audit, `PROMPT.txt` for the image-model fallback, and the matching beat text in
-`templates/beats/attack-dual-sword.txt`.
+A neutral, **empty-handed** mannequin ships in `templates/mannequin/` — four
+transparent views drawn from one skeleton by `scripts/mannequin.py`, with
+`sheet_2x2.png` / `turnaround.png` as magenta previews, `overview.png` as the
+variant contact sheet, `facing_contract.json` as the build's own audit, and
+`PROMPT.txt` for the image-model fallback.
+
+### Empty hands, not two swords
+
+The first version of that mannequin held a short sword in each hand, on the
+theory that extra props are harmless. They are not. **The character pass inherits
+props from the reference the same way it inherits silhouette** — that is the whole
+mechanism behind `first-frame-dominates` — so an unarmed character rendered
+against a two-sword proxy comes back holding two swords, and a staff or bow user
+gets a proxy whose prop contradicts their own.
+
+So the proxy answers *"does the body motion read?"* and nothing else; the prop
+belongs to the character pass, which owns it via `--subject` and the character's
+own reference. A weapon goes into the proxy only when the weapon **is** the
+motion. Variants ship alongside the default, same skeleton, same body pose:
+
+| variant | when |
+| --- | --- |
+| *(default, none)* | unarmed, kick, grab, cast — anything where a prop would be inherited |
+| `sword` | the off hand has to stay visibly free |
+| `dual-sword` | two weapons, or both arms doing the same thing |
+| `staff` | long shaft (staff, spear, polearm) — its arc crosses the floor |
+| `bow` | big open arc beside the body; locomotion and idle (a draw needs its own pose) |
+
+```bash
+cp $SKILL/templates/mannequin/weapons/staff/*.png $PROJ/proxy_views/   # shipped
+python $SKILL/scripts/mannequin.py --out $PROJ/proxy_views --weapon staff   # or draw your own
+python $SKILL/scripts/mannequin.py --all        # rebuild every variant + overview.png
+```
+
+Beat text worth reusing ships in `templates/beats/`: `walk.txt` (unarmed, and the
+neutral one to start from) and `attack-dual-sword.txt` (pair it with the
+dual-sword proxy).
 
 ---
 
@@ -81,7 +113,7 @@ audit, `PROMPT.txt` for the image-model fallback, and the matching beat text in
 | `studio/index.html` | **Sprite Sheet Studio** — single file, no build step: key, sample, pick frames, preview 4 directions, save/restore the whole project as a `.zip`, export |
 | `studio/test/` | `archive.e2e.js` — drives real Chrome over CDP to assert the project archive round-trips (all three source kinds) |
 | `references/` | `studio.md` (interaction model), `pitfalls.md` (what breaks H3 generation), `facing.md` (front vs back), `prompt-recipes.md`, `proxy-pass.md` (route B) |
-| `templates/` | A runnable example (`run-example.sh`), a subject sample, a **mannequin proxy** (`mannequin/`) and reusable beat text (`beats/`) |
+| `templates/` | A runnable example (`run-example.sh`), a subject sample, a **mannequin proxy** (`mannequin/`, empty-handed, plus `weapons/` variants) and reusable beat text (`beats/`) |
 
 ## Requirements
 
@@ -142,16 +174,21 @@ Route B replays steps 3–4 twice against two `--views` folders, with the same
 `--seed`, the same `--describe-file`, the same `--frames / --coverage / --key`:
 
 ```bash
-# pass 1 — block the motion with the mannequin
-python $SKILL/scripts/generate.py --views $PROJ/proxy_views --out $PROJ/frames/slash_proxy \
-  --action attack --subject "a faceless wooden mannequin holding two straight swords" \
-  --describe-file $SKILL/templates/beats/attack-dual-sword.txt --frames 39 --seed 808080
+# pass 1 — block the motion with the mannequin (default: empty hands)
+python $SKILL/scripts/generate.py --views $PROJ/proxy_views --out $PROJ/frames/walk_proxy \
+  --action walk --subject "a plain wooden mannequin, empty hands, no weapon" \
+  --describe-file $SKILL/templates/beats/walk.txt --frames 39 --seed 808080
 
 # pass 2 — same seed, same beats, the real character
-python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/slash \
-  --action attack --subject "a chibi warrior in green scale armour with a red plume" \
-  --describe-file $SKILL/templates/beats/attack-dual-sword.txt --frames 39 --seed 808080
+python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/walk \
+  --action walk --subject "a chibi warrior in green scale armour with a red plume" \
+  --describe-file $SKILL/templates/beats/walk.txt --frames 39 --seed 808080
 ```
+
+If the character wields something, do not describe it into the proxy — copy the
+matching variant (`templates/mannequin/weapons/<name>/*.png` → `$PROJ/proxy_views/`)
+and change `--subject` in **both** passes to name the same prop. `attack-dual-sword.txt`
+is the worked example of that pairing.
 
 Then in the studio: chroma-key, choose candidate density, build a timeline per direction,
 switch the backdrop (checker / black / white / grey / magenta for fringe), and export
@@ -199,6 +236,7 @@ GIF is not a stand-in: 10 fps quantisation eats exactly the drift the clip exist
 - **`length % 17 == 5`** — 5, 22, 39, 56, 73, 90, 107, 124. 56 = two full strides at 24 fps.
 - **H3 drops negations.** "no third sword" produces more swords — phrase positively.
 - **The reference beats the prompt.** If they disagree, fix the reference, not the wording.
+- **Props are inherited, not described away.** A weapon in the proxy reference becomes the character's weapon; the default proxy is empty-handed for that reason, and `no swords` in a prompt produces more swords.
 - **A back view is only renderable if the reference distinguishes it.** Same front and back
   picture = the figure turns around mid-clip, and no prompt helps. `check_facing.py` measures
   it (`material_tv`); the fix is a different *material* on one side, never a different outline.

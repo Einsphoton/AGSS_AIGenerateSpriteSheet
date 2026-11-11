@@ -16,8 +16,18 @@ The fix is not a better sentence. It is a reference where the two sides are
 *different materials*, so "which side am I looking at" is answerable from a
 single frame at 5 px per limb — by the model and by us.
 
-Two rules the drawing obeys
----------------------------
+Three rules the drawing obeys
+-----------------------------
+0. **Empty hands by default.** The proxy answers "does the body motion read?";
+   the prop belongs to the character pass and comes from the character's own
+   reference. The first version of this file drew two swords into the dummy, on
+   the theory that extra blades are harmless. They are not: H3 inherits props
+   from the reference image the same way it inherits silhouette, so an unarmed
+   character rendered against a two-sword proxy grows blades, and a staff user
+   gets a proxy whose prop contradicts their own. ``--weapon`` exists for the one
+   case where the prop *is* the motion — a long shaft, a bow's arc, a
+   two-handed grip — and every variant keeps the same skeleton and the same body
+   pose, so they are comparable.
 1. **Material, not silhouette.** The front is pale birch with a leather chest
    harness and a brass buckle; the back is a dark leather back panel with X
    lacing, a spine seam, stained walnut on the nape, and heels instead of toes.
@@ -27,7 +37,10 @@ Two rules the drawing obeys
 2. **One skeleton, four projections.** Every joint is defined once and
    projected orthographically. That is what makes the four views the same
    person at the same scale with the same proportions — the thing an image
-   model is worst at and a turnaround cannot survive without.
+   model is worst at and a turnaround cannot survive without. Weapons are drawn
+   in the same figure space and projected the same way, so a blade that points
+   outward in the front view points outward in the back view too (the first
+   version got this wrong and crossed both blades over the crotch).
 
 The check that this actually worked is ``check_facing.py`` — run it on the
 output. "I made the back different" is an opinion; ``torso_diff 0.42`` is a
@@ -65,6 +78,37 @@ STEEL = ((201, 210, 218), (138, 151, 164), (90, 100, 112))
 # outline — the same "material not silhouette" rule as the back panel.
 ARM_SHADE = ((205, 166, 118), (186, 146, 100), (140, 100, 60))
 THREAD = (245, 228, 196)
+# Props get their own tone, one step off the pale body wood, so a shaft or a bow
+# limb is never mistaken for a limb of the dummy — and so that removing them
+# leaves no hole in the palette the audit measures.
+PROP = ((150, 118, 82), (112, 84, 56), (72, 52, 33))
+
+# --------------------------------------------------------------------------
+# Weapons. `none` is the default and the honest one: the proxy blocks body
+# mechanics, the character pass supplies the prop from the character's own
+# reference. Add a weapon only when the weapon *is* part of the arc or the mass
+# — a long shaft, a bow, a two-handed grip — because a prop in the reference is
+# a prop the character pass inherits.
+# --------------------------------------------------------------------------
+
+WEAPONS = ("none", "sword", "dual-sword", "staff", "bow")
+WEAPON_ALIASES = {"dual": "dual-sword", "two-swords": "dual-sword",
+                  "sword-and-shield": "sword", "empty": "none"}
+
+WEAPON_NOTES = {
+    "none": "empty hands, open fingers — the default, and the only variant that "
+            "commits to nothing, so the character pass is free to add any prop",
+    "sword": "one short blade in the figure's right hand, left hand empty — use "
+             "when one hand has to stay visibly free (casting, off-hand item)",
+    "dual-sword": "a short blade in each hand — dual wield, or a stand-in for any "
+                  "two-handed motion where both arms do the same thing",
+    "staff": "a long vertical shaft in the figure's right hand, head-height to "
+             "ground — long-prop motions (staff, spear, polearm) whose arc a "
+             "sword proxy would mis-block",
+    "bow": "a vertical bow in the figure's left hand, string slack, held at rest "
+           "— for locomotion and idle. A draw needs its own pose, which is a "
+           "custom proxy (templates/mannequin/PROMPT.txt), not this flag",
+}
 
 # --------------------------------------------------------------------------
 # One skeleton, in figure units (y measured down from the top of the head).
@@ -284,13 +328,48 @@ class View:
     def profile(self) -> bool:
         return self.kind in ("left", "right")
 
+    # -- projection of non-body geometry ------------------------------------
+    # Weapons are written once, in figure space, and projected here. That is the
+    # only reason a blade can be guaranteed to mirror correctly in the back
+    # view: the vector goes through the same flip as the joint positions.
 
-def _sword(g: Group, hand, out_dir, blade_len: float = 16.5):
+    @property
+    def sx(self) -> float:
+        """Sign applied to the lateral axis when it becomes screen-x."""
+        return self.dsign if self.profile else self.flip()
+
+    def p(self, u: float, y: float):
+        """Figure-space (lateral, down) -> pixels. In a profile the lateral axis
+        is depth, which is what the camera sees at 90 degrees."""
+        return (self.fz(u) if self.profile else self.fx(u)), self.fy(y)
+
+    def d(self, du: float, dy: float):
+        """Figure-space direction -> screen direction. Without this a weapon
+        drawn "outward" leans inward in the mirrored view."""
+        return (du * self.sx, dy)
+
+    def hands(self) -> dict:
+        """Visible hands in figure space.
+
+        A profile shows one hand, so both tags resolve to it — which is also
+        what the render actually is: one arm, drawn once.
+        """
+        y = WRIST[1] + 1.6
+        if self.profile:
+            return {"near": (2.6, y)}
+        return {"right": (-WRIST[0], y), "left": (WRIST[0], y)}
+
+
+def _sword(g: Group, hand, out_dir, blade_len: float = 18.0):
     """A short straight sword, blade angled down and away from the body.
 
     Pointed *away* on purpose: a blade laid across the thigh is the classic
     thin-prop failure (see pitfalls.md#thin-props) and it also makes the
     reference read as "one weapon crossing the body".
+
+    The blade tapers 0.95 -> 0.30 units. The first version ran 1.25 -> 0.55 over
+    16.5 and read as a machete: at this scale a wide blade with a wide tip is a
+    knife, and the crossguard disappears into it.
     """
     hx, hy = hand
     dx, dy = out_dir
@@ -302,18 +381,113 @@ def _sword(g: Group, hand, out_dir, blade_len: float = 16.5):
     tip = (guard[0] + dx * blade_len * SS, guard[1] + dy * blade_len * SS)
     pommel = (hx - dx * 2.8 * SS, hy - dy * 2.8 * SS)
 
-    g.cap(pommel, guard, 1.1)                                       # grip
-    g.cap((guard[0] + nx * 1.6 * SS, guard[1] + ny * 1.6 * SS),
-          (guard[0] - nx * 1.6 * SS, guard[1] - ny * 1.6 * SS), 0.6)  # crossguard
-    g.taper(guard, tip, 1.25, 0.55)                                  # blade
+    g.cap(pommel, guard, 0.95)                                      # grip
+    g.cap((guard[0] + nx * 2.2 * SS, guard[1] + ny * 2.2 * SS),
+          (guard[0] - nx * 2.2 * SS, guard[1] - ny * 2.2 * SS), 0.55)  # crossguard
+    g.taper(guard, tip, 0.95, 0.30)                                  # blade
     return {"guard": guard, "tip": tip, "pommel": pommel}
+
+
+def _pick(hands: dict, *tags):
+    for t in tags:
+        if t in hands:
+            return hands[t]
+    return next(iter(hands.values()))
+
+
+def _blade_dir(view: View, u: float, outward: float = 0.50):
+    """Where a held blade points. Outward-and-down in the front and back views;
+    forward-and-down in a profile, because there the lateral axis is depth and
+    an outward blade would project straight onto the thigh."""
+    if view.profile:
+        return view.d(0.40, 0.92)
+    return view.d(outward if u >= 0 else -outward, 0.87)
+
+
+def _weapon_sword(g: Group, view: View, hands: dict) -> dict:
+    u, y = _pick(hands, "right", "near")
+    _sword(g, view.p(u, y), _blade_dir(view, u))
+    return {"hand": "right", "offhand": "empty"}
+
+
+def _weapon_dual(g: Group, view: View, hands: dict) -> dict:
+    if "left" not in hands:          # profile: one visible arm, so one blade
+        u, y = hands["near"]
+        _sword(g, view.p(u, y), _blade_dir(view, u))
+        return {"hands": "both (the far one is behind the body)"}
+    for u, y in hands.values():
+        _sword(g, view.p(u, y), _blade_dir(view, u))
+    return {"hands": "both"}
+
+
+def _weapon_staff(g: Group, view: View, hands: dict) -> dict:
+    """A shaft that reaches the ground. Vertical in every view on purpose: a
+    staff seen in profile *is* a vertical line, and faking an angle is how a
+    turnaround stops being one body."""
+    u, y = _pick(hands, "right", "near")
+    x, _ = view.p(u, y)
+    top, bot = view.fy(16.0), view.fy(76.6)
+    g.cap((x, top), (x, bot), 0.60)
+    g.cap((x, top), (x, top + 1.5 * SS), 0.92)      # ferrules, so it is a prop
+    g.cap((x, bot - 1.5 * SS), (x, bot), 0.92)
+    return {"hand": "right", "shaft": "head height to ground"}
+
+
+def _weapon_bow(g: Group, view: View, hands: dict) -> dict:
+    u, y = _pick(hands, "left", "near")
+    belly = 1.0 if view.profile else (1.0 if u >= 0 else -1.0)
+    pts = []
+    for i in range(9):
+        t = i / 8
+        off = 4.6 * float(np.sin(np.pi * t))
+        pts.append(view.p(u + off * belly, y - 16.0 + 32.0 * t))   # grip on the hand
+    for a, b in zip(pts, pts[1:]):
+        g.cap(a, b, 0.55)
+    g.cap(pts[0], pts[-1], 0.26)                    # slack string
+    return {"hand": "left", "string": "slack — a draw is a different pose"}
+
+
+_WEAPON_FN = {"sword": _weapon_sword, "dual-sword": _weapon_dual,
+              "staff": _weapon_staff, "bow": _weapon_bow}
+
+
+def draw_weapon(name: str, view: View, buf: np.ndarray) -> dict:
+    name = WEAPON_ALIASES.get(name, name)
+    if name == "none":
+        return {"weapon": "none"}
+    g = Group(PX_W, PX_H)
+    info = _WEAPON_FN[name](g, view, view.hands()) or {}
+    paint(buf, g.mask(), PROP if name in ("staff", "bow") else STEEL, rim=False)
+    return {"weapon": name, **info}
+
+
+def paint_hand(buf: np.ndarray, cx: float, cy: float, pose: str,
+               tones=WOOD) -> None:
+    """Open hand or fist. The default proxy has empty hands, so the hand has to
+    read as a hand at 5 px per limb — otherwise the character pass inherits a
+    stump. A fist gets a knuckle line and a squarer mass; an open hand is longer
+    with one finger split."""
+    g = Group(PX_W, PX_H)
+    if pose == "grip":
+        g.ell(cx, cy, 2.1, 2.1)
+    else:
+        g.ell(cx, cy, 1.75, 2.5)
+    m = g.mask()
+    paint(buf, m, tones)
+    d = Group(PX_W, PX_H)
+    if pose == "grip":
+        d.rect(cx - 1.3 * SS, cy + 0.6 * SS, cx + 1.3 * SS, cy + 1.3 * SS)
+    else:
+        d.rect(cx - 0.9 * SS, cy + 1.5 * SS, cx + 0.9 * SS, cy + 2.2 * SS)
+    decal(buf, d.mask(), m, tones[2])
 
 
 # --------------------------------------------------------------------------
 # Front / back
 # --------------------------------------------------------------------------
 
-def draw_front_back(view: View, buf: np.ndarray) -> dict:
+def draw_front_back(view: View, buf: np.ndarray, weapon: str = "none",
+                    hand_pose: str = "open") -> dict:
     """Front and back share one silhouette on purpose — the difference is the
     material, because silhouette is what the character pass inherits and
     material is what it does not."""
@@ -363,9 +537,7 @@ def draw_front_back(view: View, buf: np.ndarray) -> dict:
         arm = Group(W, H)
         arm.taper(sh, el, 2.5, 2.1).taper(el, wr, 2.1, 1.8)
         paint(buf, arm.mask(), WOOD)
-        hand = Group(W, H)
-        hand.ell(wr[0], wr[1] + 1.0, 2.0, 2.2)
-        paint(buf, hand.mask(), WOOD)
+        paint_hand(buf, wr[0], wr[1] + 1.0, hand_pose)
 
     # ---- head -------------------------------------------------------------
     head = Group(W, H)
@@ -449,23 +621,18 @@ def draw_front_back(view: View, buf: np.ndarray) -> dict:
         hole.rect(fx(-0.8), fy(37.4), fx(0.8), fy(38.4))
         buf[hole.mask() & kbm] = (*LEATHER[2], 255)
 
-    # ---- swords -----------------------------------------------------------
-    for side in (-1, 1):
-        g = Group(W, H)
-        # the direction has to be mirrored with the view as well, or the back
-        # view hangs both blades inward and crosses them at the crotch
-        _sword(g, (fx(side * WRIST[0]), fy(WRIST[1] + 1.6)),
-               (side * view.flip() * 0.50, 0.87))
-        paint(buf, g.mask(), STEEL, rim=False)
+    # ---- prop (nothing by default, see rule 0) ----------------------------
+    info = draw_weapon(weapon, view, buf)
 
-    return {"view": view.kind}
+    return {"view": view.kind, **info}
 
 
 # --------------------------------------------------------------------------
 # Profile
 # --------------------------------------------------------------------------
 
-def draw_profile(view: View, buf: np.ndarray) -> dict:
+def draw_profile(view: View, buf: np.ndarray, weapon: str = "none",
+                 hand_pose: str = "open") -> dict:
     """True 90° profile: depth on screen-x, one arm, one leg, toes forward.
 
     Built as **one body**, then split by material. Drawing the torso, leg and
@@ -546,9 +713,7 @@ def draw_profile(view: View, buf: np.ndarray) -> dict:
     arm.taper((fz(1.8), fy(SHOULDER[1])), (fz(2.3), fy(ELBOW[1])), 2.5, 2.1)
     arm.taper((fz(2.3), fy(ELBOW[1])), (fz(2.6), fy(WRIST[1])), 2.1, 1.8)
     paint(buf, arm.mask(), ARM_SHADE)
-    hand = Group(W, H)
-    hand.ell(fz(2.6), fy(WRIST[1] + 1.6), 2.0, 2.2)
-    paint(buf, hand.mask(), ARM_SHADE)
+    paint_hand(buf, fz(2.6), fy(WRIST[1] + 1.6), hand_pose, tones=ARM_SHADE)
 
     # harness strap on the chest edge — the front's marker, seen side-on
     strap = Group(W, H)
@@ -564,26 +729,24 @@ def draw_profile(view: View, buf: np.ndarray) -> dict:
         b.ell(fz(z), fy(y), r, r)
         paint(buf, b.mask(), WOOD)
 
-    # ---- sword ------------------------------------------------------------
-    g = Group(W, H)
-    # blade tilted forward as well as down: a purely vertical blade projects onto
-    # the thigh and hides the leg, and it is what a blade angled outward in the
-    # front view actually does in depth
-    _sword(g, (fz(2.6), fy(WRIST[1] + 1.6)), (0.40 * view.dsign, 0.92))
-    paint(buf, g.mask(), STEEL, rim=False)
+    # ---- prop (nothing by default) ---------------------------------------
+    info = draw_weapon(weapon, view, buf)
 
-    return {"view": view.kind}
+    return {"view": view.kind, **info}
 
 
 # --------------------------------------------------------------------------
 
-def render(kind: str) -> Image.Image:
+def render(kind: str, weapon: str = "none", hand_pose: str | None = None
+           ) -> Image.Image:
     buf = np.zeros((PX_H, PX_W, 4), dtype=np.uint8)
     v = View(kind)
+    weapon = WEAPON_ALIASES.get(weapon, weapon)
+    pose = hand_pose or ("open" if weapon == "none" else "grip")
     if v.profile:
-        draw_profile(v, buf)
+        draw_profile(v, buf, weapon, pose)
     else:
-        draw_front_back(v, buf)
+        draw_front_back(v, buf, weapon, pose)
     return Image.fromarray(buf, "RGBA")
 
 
@@ -618,10 +781,25 @@ def strip(images: dict, key_rgb, label: bool = True):
     return _compose(images, key_rgb, cols=4, label=label)
 
 
-def contract(out_dir: str, scale: int) -> dict:
+def contract(out_dir: str, scale: int, weapon: str = "none",
+             hand_pose: str | None = None) -> dict:
+    weapon = WEAPON_ALIASES.get(weapon, weapon)
+    pose = hand_pose or ("open" if weapon == "none" else "grip")
     return {
         "generator": "scripts/mannequin.py",
         "scale": scale,
+        "weapon": weapon,
+        "weapon_note": WEAPON_NOTES[weapon],
+        "hand_pose": pose,
+        "prop_policy": [
+            "the proxy blocks body mechanics; the prop belongs to the character "
+            "pass and comes from the character's own reference",
+            "so the default is empty hands — a weapon drawn here is a weapon the "
+            "character pass inherits, right down to an unarmed character growing "
+            "blades",
+            "add one only when the weapon is part of the arc or the mass: a long "
+            "shaft, a bow, a two-handed grip",
+        ],
         "unit_canvas": [CANVAS_W, CANVAS_H],
         "figure_units": FIGURE_H,
         "front_markers": [
@@ -647,19 +825,24 @@ def contract(out_dir: str, scale: int) -> dict:
             "inherits the proxy silhouette, so an extra bump becomes a backpack",
             "identical head-to-heel height and pixel scale in all four views",
             "one arm and one leg in the profile views",
+            "every weapon shares the body pose, so variants stay comparable",
         ],
         "rule": "the difference between the two sides is material, never outline",
         "verify": "python scripts/check_facing.py " + out_dir,
     }
 
 
-def build(out_dir: str, scale: int = 5, key: str = KEY_DEFAULT) -> dict:
+def build(out_dir: str, scale: int = 5, key: str = KEY_DEFAULT,
+          weapon: str = "none", hand_pose: str | None = None,
+          sheets: bool = True) -> dict:
     key_rgb = tuple(int(key[i:i + 2], 16) for i in (1, 3, 5))
     os.makedirs(out_dir, exist_ok=True)
+    weapon = WEAPON_ALIASES.get(weapon, weapon)
 
-    base = {k: render(k) for k in ("front", "back", "right", "left")}
+    views = {k: render(k, weapon, hand_pose)
+             for k in ("front", "back", "right", "left")}
     written = {}
-    for name, im in base.items():
+    for name, im in views.items():
         big = im.resize((im.width * scale, im.height * scale), Image.NEAREST)
         p = os.path.join(out_dir, f"{name}.png")
         big.save(p)
@@ -669,12 +852,14 @@ def build(out_dir: str, scale: int = 5, key: str = KEY_DEFAULT) -> dict:
         return img.resize((img.width * scale, img.height * scale), Image.NEAREST) \
             if scale > 1 else img
 
-    sheet_p = os.path.join(out_dir, "sheet_2x2.png")
-    scaled(contact_sheet(base, key_rgb)).save(sheet_p)
-    strip_p = os.path.join(out_dir, "turnaround.png")
-    scaled(strip(base, key_rgb)).save(strip_p)
+    sheet_p = strip_p = None
+    if sheets:
+        sheet_p = os.path.join(out_dir, "sheet_2x2.png")
+        scaled(contact_sheet(views, key_rgb)).save(sheet_p)
+        strip_p = os.path.join(out_dir, "turnaround.png")
+        scaled(strip(views, key_rgb)).save(strip_p)
 
-    c = contract(out_dir, scale)
+    c = contract(out_dir, scale, weapon, hand_pose)
     # Bake the verification into the asset. "The back is different now" is a
     # claim; the audit is the receipt, and it travels with the PNGs.
     try:
@@ -697,7 +882,35 @@ def build(out_dir: str, scale: int = 5, key: str = KEY_DEFAULT) -> dict:
         json.dump(c, f, indent=1, ensure_ascii=False)
 
     return {"files": written, "sheet": sheet_p, "turnaround": strip_p,
-            "contract": cp, "audit": c.get("facing_audit")}
+            "contract": cp, "audit": c.get("facing_audit"), "weapon": weapon}
+
+
+def build_overview(out_dir: str, scale: int, key: str) -> str:
+    """One picture that answers "is this proxy only for dual wield?". Five
+    variants, front and profile, same skeleton, same pose."""
+    key_rgb = tuple(int(key[i:i + 2], 16) for i in (1, 3, 5))
+    pad, head, gutter = 10, 16, 58
+    cw, ch = PX_W, PX_H
+    W = gutter + pad + len(WEAPONS) * (cw + pad)
+    H = head + pad + 2 * (ch + pad)
+    canvas = Image.new("RGB", (W, H), key_rgb)
+    d = ImageDraw.Draw(canvas)
+    for col, w in enumerate(WEAPONS):
+        x = gutter + pad + col * (cw + pad)
+        d.text((x + 2, 3), w.upper(), fill=(0, 0, 0))
+        for row, kind in enumerate(("front", "right")):
+            im = render(kind, w)
+            y = head + pad + row * (ch + pad)
+            canvas.paste(im, (x, y), im)
+    for row, lab in enumerate(("FRONT", "SIDE")):
+        y = head + pad + row * (ch + pad) + ch // 2
+        d.text((4, y), lab, fill=(0, 0, 0))
+    p = os.path.join(out_dir, "overview.png")
+    if scale > 1:
+        canvas = canvas.resize((canvas.width * scale, canvas.height * scale),
+                               Image.NEAREST)
+    canvas.save(p)
+    return p
 
 
 def main(argv=None) -> int:
@@ -711,22 +924,56 @@ def main(argv=None) -> int:
                     help="backdrop for the contact sheets only; the per-view "
                          "PNGs stay transparent so prep_ref measures the bbox "
                          "exactly")
+    ap.add_argument("--weapon", default="none",
+                    choices=list(WEAPONS) + list(WEAPON_ALIASES),
+                    help="none (default) = empty hands. See WEAPON_NOTES in the "
+                         "source for when a weapon is the right call")
+    ap.add_argument("--hand", choices=("open", "grip"),
+                    help="hand pose; defaults to open for none, grip otherwise")
+    ap.add_argument("--all", action="store_true",
+                    help="also build every weapon variant into <out>/weapons/ "
+                         "plus overview.png")
+    ap.add_argument("--no-sheets", action="store_true",
+                    help="skip sheet_2x2.png / turnaround.png")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args(argv)
 
-    res = build(a.out, a.scale, a.key)
+    weapon = WEAPON_ALIASES.get(a.weapon, a.weapon)
+    out = a.out
+    # never let a variant quietly overwrite the shipped default
+    if weapon != "none" and os.path.abspath(out) == os.path.abspath(default_out):
+        out = os.path.join(default_out, "weapons", weapon)
+
+    res = build(out, a.scale, a.key, weapon, a.hand,
+                sheets=not a.no_sheets)
     if not a.quiet:
+        print(f"weapon {res['weapon']}  hand {a.hand or 'auto'}")
         for k, v in res["files"].items():
             print(f"{k:6s} {v}")
-        print(f"sheet  {res['sheet']}")
-        print(f"strip  {res['turnaround']}")
+        for key in ("sheet", "turnaround"):
+            if res.get(key):
+                print(f"{key:6s} {res[key]}")
         print(f"contract {res['contract']}")
         aud = res.get("audit") or {}
         if "verdict" in aud:
             print(f"\nfacing {aud['verdict']}  score {aud['score']:.3f}  "
                   f"(whole {aud['whole']:.2f}, torso {aud['torso']:.2f}, "
                   f"head {aud['head']:.2f}, mirror {aud['mirror_iou']})")
-        print("next: python scripts/check_facing.py " + a.out)
+
+    if a.all:
+        for w in WEAPONS[1:]:
+            d = os.path.join(a.out, "weapons", w)
+            r = build(d, a.scale, a.key, w, a.hand, sheets=False)
+            aud = r.get("audit") or {}
+            if not a.quiet:
+                print(f"variant {w:11s} -> {d}  "
+                      f"({aud.get('verdict', '?')} {aud.get('score', 0):.3f})")
+        ov = build_overview(a.out, max(2, a.scale // 2), a.key)
+        if not a.quiet:
+            print(f"overview {ov}")
+
+    if not a.quiet:
+        print("\nnext: python scripts/check_facing.py " + out)
     return 0
 
 

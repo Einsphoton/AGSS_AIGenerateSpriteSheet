@@ -2,10 +2,10 @@
 name: pixel-sprite-sheet
 display_name: 像素角色 Sprite Sheet 生产线
 display_name_en: Pixel Sprite Sheet Pipeline
-description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。使用前先询问用户走哪条路线：①直接渲染目标角色（一步到位）；②先渲染人偶代理动作，再用同一 seed 和同一套节拍把人偶替换成目标角色（两步，复杂角色动作更干净）。渲染前会做朝向审计（check_facing.py）：参考图正面和背面若是同一张图，视频模型会分不清朝向、动画中途转身，必须先让两侧在材质上区分开（内置人偶已按此设计：正面皮革胸带+铜扣，背面皮革背板+X 拼缝+深色后脑，轮廓完全不变）。之后负责切图 → 参考图补白与幕布（防裁切、防首帧黑底）→ MiniMax H3 图生视频（ComfyUI）→ 帧级质检（边缘裁切/空帧/幕布）→ Sprite Sheet Studio 抠图与逐帧挑拣 → 导出 PNG + Atlas；每次渲染的原始视频归档到 videos/ 并带版本号，且每次交付都会把源视频直接放进对话播放（不只给路径）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画 / 背面动画朝向不对"时使用。
+description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。使用前先询问用户走哪条路线：①直接渲染目标角色（一步到位）；②先渲染人偶代理动作，再用同一 seed 和同一套节拍把人偶替换成目标角色（两步，复杂角色动作更干净）。渲染前会做朝向审计（check_facing.py）：参考图正面和背面若是同一张图，视频模型会分不清朝向、动画中途转身，必须先让两侧在材质上区分开（内置人偶已按此设计：正面皮革胸带+铜扣，背面皮革背板+X 拼缝+深色后脑，轮廓完全不变）。路线②的人偶默认**空手**——道具会被角色那一遍继承，所以除长柄/弓等"武器即动作"的情况外不要往代理图里放武器（templates/mannequin/weapons/ 带 sword / dual-sword / staff / bow 变体）。之后负责切图 → 参考图补白与幕布（防裁切、防首帧黑底）→ MiniMax H3 图生视频（ComfyUI）→ 帧级质检（边缘裁切/空帧/幕布）→ Sprite Sheet Studio 抠图与逐帧挑拣 → 导出 PNG + Atlas；每次渲染的原始视频归档到 videos/ 并带版本号，且每次交付都会把源视频直接放进对话播放（不只给路径）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画 / 背面动画朝向不对"时使用。
 description_en: Generate pixel-game character animation sprite sheets from a 4-view character reference. The user supplies view images and a one-line description of the animation (walk, run, attack, cast, hurt, jump, ...); the skill runs split → MiniMax H3 image-to-video (ComfyUI) → chroma key → frame picking → export PNG + atlas, archives every render's source clip into a version-numbered videos/ folder, and ships an interactive Sprite Sheet Studio that imports video, animated GIF and PNG (PNGs are appended to the candidate pool), reloads any archived version, and previews all four directions at once over a switchable backdrop. Use when asked to turn a character into a sprite sheet, walk cycle, or 2D game animation frames.
-description: Generate pixel-game character animation sprite sheets from a 4-view character reference. Use when asked to turn a character into a sprite sheet, walk cycle, attack/cast/hurt animation, or 2D game animation frames — including when a back-view animation came out facing the wrong way. Always ask first whether to animate the target character directly or to block the motion with a mannequin proxy and re-render it onto the character. Runs a facing audit (check_facing.py: front and back must differ in material or the video model loses the orientation) → split → reference prep → MiniMax H3 (ComfyUI) → chroma key → frame QC → studio picking → PNG + atlas, archives source clips under version numbers in videos/, and ships an interactive Sprite Sheet Studio (imports video / GIF / PNG, four-direction preview, switchable backdrop).
-version: 1.6.0
+description: Generate pixel-game character animation sprite sheets from a 4-view character reference. Use when asked to turn a character into a sprite sheet, walk cycle, attack/cast/hurt animation, or 2D game animation frames — including when a back-view animation came out facing the wrong way. Always ask first whether to animate the target character directly or to block the motion with a mannequin proxy and re-render it onto the character. The bundled proxy has empty hands on purpose — the character pass inherits props as readily as silhouette, so a weapon goes into the reference only when the weapon is the motion (per-weapon variants ship in templates/mannequin/weapons/). Runs a facing audit (check_facing.py: front and back must differ in material or the video model loses the orientation) → split → reference prep → MiniMax H3 (ComfyUI) → chroma key → frame QC → studio picking → PNG + atlas, archives source clips under version numbers in videos/, and ships an interactive Sprite Sheet Studio (imports video / GIF / PNG, four-direction preview, switchable backdrop).
+version: 1.7.0
 ---
 
 # Pixel Sprite Sheet Pipeline
@@ -29,7 +29,7 @@ different amounts. Ask; do not pick for the user.
 
 |  | **A — direct** | **B — proxy pass** |
 | --- | --- | --- |
-| what gets rendered | the target character, once | a plain mannequin first, then the character, same seed + same beats |
+| what gets rendered | the target character, once | a plain, empty-handed mannequin first, then the character, same seed + same beats |
 | cost | 1× renders (≈2–4 min per view) | 2× renders |
 | motion when the character is busy | H3 spends its attention on the cape/plume/armour and the beats get mushy | the mannequin has nothing to get wrong, so the beats land cleanly, and the second pass inherits the timing |
 | when it wins | simple silhouette, one weapon, tight budget, motion already known | capes, long hair, plumes, dual weapons, layered armour, an unfamiliar design, or the user wants to judge the motion before committing |
@@ -45,6 +45,15 @@ Say what each costs in one line; do not bury it.
 - **A** → continue to step 1 below.
 - **B** → read `references/proxy-pass.md`. It is the same pipeline run twice,
   with only `--views` and `--subject` changing between the passes.
+
+**The proxy has empty hands, and that is deliberate.** The mannequin pass answers
+"does the body motion read?"; the prop belongs to the character pass, which gets
+it from the character's own reference. H3 inherits props from the reference image
+the same way it inherits silhouette, so a proxy holding two swords teaches an
+unarmed character to grow them, and its prop is wrong for a staff or bow user.
+Copy a weapon variant from `templates/mannequin/weapons/` only when the weapon
+*is* the motion — a long shaft, a bow's arc, a two-handed grip. One-line rule:
+**no prop in the proxy unless the prop changes the arc.**
 
 **Route B still ends in the studio.** The mannequin pass is a motion sketch, not
 a deliverable: the character pass produces the frames, and the user keys and
@@ -549,7 +558,8 @@ and says so. 56 is a good default: two full walk strides at 24 fps.
 scripts/
   h3client.py      ComfyUI H3 client (build / submit / wait / collect, HTTP upload staging)
   check_facing.py  front vs back distinguishability audit (material_tv, silhouette, profiles)
-  mannequin.py     draws the 4-view proxy from one skeleton (material-coded front/back)
+  mannequin.py     draws the 4-view proxy from one skeleton (material-coded front/back,
+                   --weapon none|sword|dual-sword|staff|bow, --all for every variant)
   split_views.py   sheet → per-view PNGs
   prep_ref.py      reference → square key-coloured canvas with margins (anti-crop, anti-black-frame)
   make_prompt.py   description → H3 prompt (presets + custom)
@@ -563,11 +573,17 @@ scripts/
 studio/
   index.html       Sprite Sheet Studio (single file, no build step)
 templates/
-  mannequin/       bundled route-B proxy: 4 views of a wooden dummy, 2 swords, transparent;
+  mannequin/       bundled route-B proxy: 4 views of a wooden dummy, EMPTY HANDS, transparent;
                    front = harness + brass buckle, back = leather panel + X lacing + stained
-                   nape (same silhouette) — plus sheet_2x2.png, turnaround.png and
-                   facing_contract.json, which carries the audit the build ran
-  beats/           beat text worth reusing (same file in both passes of a proxy run)
+                   nape (same silhouette) — plus sheet_2x2.png, turnaround.png, overview.png
+                   and facing_contract.json, which carries the audit the build ran
+    weapons/       optional props, same skeleton and same body pose: sword, dual-sword,
+                   staff, bow. Copy the one that matches, or mannequin.py --weapon <name>.
+                   Empty hands is the default because a prop in the reference is a prop
+                   the character pass inherits
+  beats/           beat text worth reusing (same file in both passes of a proxy run):
+                   walk.txt (unarmed, neutral), attack-dual-sword.txt (needs the
+                   dual-sword proxy)
 references/
   facing.md        front vs back: why the model loses the orientation, and the fix
   proxy-pass.md    route B: mannequin pass → character pass, and what may not change

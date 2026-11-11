@@ -45,6 +45,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -156,7 +157,10 @@ def main() -> int:
     describe = args.describe
     if args.describe_file:
         with open(args.describe_file, encoding="utf-8") as f:
-            describe = f.read().strip()
+            # Collapse the hard wraps. A beat file is wrapped for humans, but it
+            # is pasted into a single-line prompt, and a raw newline there is a
+            # segment break the encoder never asked for.
+            describe = re.sub(r"\s+", " ", f.read()).strip()
 
     frames = h3.snap_length(args.frames)
     if frames != args.frames:
