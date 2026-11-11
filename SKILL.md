@@ -2,10 +2,10 @@
 name: pixel-sprite-sheet
 display_name: 像素角色 Sprite Sheet 生产线
 display_name_en: Pixel Sprite Sheet Pipeline
-description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。使用前先询问用户走哪条路线：①直接渲染目标角色（一步到位）；②先渲染人偶代理动作，再用同一 seed 和同一套节拍把人偶替换成目标角色（两步，复杂角色动作更干净）。之后负责切图 → 参考图补白与幕布（防裁切、防首帧黑底）→ MiniMax H3 图生视频（ComfyUI）→ 帧级质检（边缘裁切/空帧/幕布）→ Sprite Sheet Studio 抠图与逐帧挑拣 → 导出 PNG + Atlas；每次渲染的原始视频归档到 videos/ 并带版本号，且每次交付都会把源视频直接放进对话播放（不只给路径）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画"时使用。
+description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。使用前先询问用户走哪条路线：①直接渲染目标角色（一步到位）；②先渲染人偶代理动作，再用同一 seed 和同一套节拍把人偶替换成目标角色（两步，复杂角色动作更干净）。渲染前会做朝向审计（check_facing.py）：参考图正面和背面若是同一张图，视频模型会分不清朝向、动画中途转身，必须先让两侧在材质上区分开（内置人偶已按此设计：正面皮革胸带+铜扣，背面皮革背板+X 拼缝+深色后脑，轮廓完全不变）。之后负责切图 → 参考图补白与幕布（防裁切、防首帧黑底）→ MiniMax H3 图生视频（ComfyUI）→ 帧级质检（边缘裁切/空帧/幕布）→ Sprite Sheet Studio 抠图与逐帧挑拣 → 导出 PNG + Atlas；每次渲染的原始视频归档到 videos/ 并带版本号，且每次交付都会把源视频直接放进对话播放（不只给路径）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画 / 背面动画朝向不对"时使用。
 description_en: Generate pixel-game character animation sprite sheets from a 4-view character reference. The user supplies view images and a one-line description of the animation (walk, run, attack, cast, hurt, jump, ...); the skill runs split → MiniMax H3 image-to-video (ComfyUI) → chroma key → frame picking → export PNG + atlas, archives every render's source clip into a version-numbered videos/ folder, and ships an interactive Sprite Sheet Studio that imports video, animated GIF and PNG (PNGs are appended to the candidate pool), reloads any archived version, and previews all four directions at once over a switchable backdrop. Use when asked to turn a character into a sprite sheet, walk cycle, or 2D game animation frames.
-description: Generate pixel-game character animation sprite sheets from a 4-view character reference. Use when asked to turn a character into a sprite sheet, walk cycle, attack/cast/hurt animation, or 2D game animation frames. Always ask first whether to animate the target character directly or to block the motion with a mannequin proxy and re-render it onto the character. Runs split → reference prep → MiniMax H3 (ComfyUI) → chroma key → frame QC → studio picking → PNG + atlas, archives source clips under version numbers in videos/, and ships an interactive Sprite Sheet Studio (imports video / GIF / PNG, four-direction preview, switchable backdrop).
-version: 1.5.0
+description: Generate pixel-game character animation sprite sheets from a 4-view character reference. Use when asked to turn a character into a sprite sheet, walk cycle, attack/cast/hurt animation, or 2D game animation frames — including when a back-view animation came out facing the wrong way. Always ask first whether to animate the target character directly or to block the motion with a mannequin proxy and re-render it onto the character. Runs a facing audit (check_facing.py: front and back must differ in material or the video model loses the orientation) → split → reference prep → MiniMax H3 (ComfyUI) → chroma key → frame QC → studio picking → PNG + atlas, archives source clips under version numbers in videos/, and ships an interactive Sprite Sheet Studio (imports video / GIF / PNG, four-direction preview, switchable backdrop).
+version: 1.6.0
 ---
 
 # Pixel Sprite Sheet Pipeline
@@ -14,9 +14,13 @@ Turn a character reference sheet into an engine-ready animation sprite sheet,
 driven by a plain-language description of the animation.
 
 ```
-4-view sheet → split_views → prep_ref → generate (H3) → qc → studio (key+pick) → PNG + atlas
-   切图       → 四方向 PNG  → 补白·幕布 → 帧序列/videos → 边缘质检 → 抠图·挑帧   → 导出
+4-view sheet → check_facing → split_views → prep_ref → generate (H3) → qc → studio (key+pick) → PNG + atlas
+   切图        朝向审计       四方向 PNG  → 补白·幕布 → 帧序列/videos → 边缘质检 → 抠图·挑帧   → 导出
 ```
+
+`check_facing` is not optional and not cosmetic: if the reference's front and back
+are the same picture, every back-view render is wasted, because the model turns
+the figure around mid-clip. See *Facing* below.
 
 ## Step 0 — Ask which route, before anything else
 
@@ -70,6 +74,47 @@ video silently, and never let the GIF stand in for it unannounced (the GIF is
 quantised and 10 fps; it hides exactly the crawling and popping the user needs to
 judge).
 
+## Facing: the reference decides whether the back view exists
+
+A back-view clip that turns the character around halfway, or a whole back
+direction that plays chest-first, is almost never a prompt problem. It is a
+reference problem, and it is the one thing in this pipeline that no wording can
+fix:
+
+> H3 is image-to-video and reads the reference far more than the prompt. A
+> reference whose **front and back are the same picture** makes the sentence
+> "pure rear view" a contradiction, and H3 resolves contradictions by turning
+> the figure around. Measured on the mannequin that used to ship here: identical
+> dominant torso colour on both sides, colour separation `0.0`.
+
+So, before anything is rendered:
+
+```bash
+python scripts/check_facing.py $PROJ/views          # PASS / WEAK / FAIL
+```
+
+`generate.py` runs it automatically and prints one line plus warnings. If it
+fails, stop and fix the reference:
+
+- **different material on the back, identical outline.** A back panel, mantle or
+  cape; lacing, straps or a spine seam; an emblem on the chest and a bare back; a
+  stained nape or a crest at the back of the head. Never a bump — the character
+  pass inherits the proxy's silhouette, so a backpack on the proxy becomes a
+  backpack on the character.
+- **the difference has to be on the torso or the head**, not a limb: arms swing
+  and legs cross, so a marker on a forearm is invisible for half a cycle.
+- **the marker colour must not be the chroma key.**
+
+The bundled mannequin is built this way on purpose and scores `0.44` (old one:
+`0.05`) with its silhouette unchanged at `IoU 0.99`. The prompt half of the fix
+is already in `make_prompt.py`: every view enumerates what the camera can see and
+locks the camera for the whole clip. Override the enumeration with
+`--anchor back="the tall red cape and the silver clasp"` when the character has
+its own markers.
+
+Full diagnosis, marker recipes and the before/after numbers:
+`references/facing.md`.
+
 ## When to use
 
 Use this when the user wants:
@@ -86,6 +131,9 @@ Do **not** use it for: single illustration generation (use an image model),
    the character). Ask before anything else; see *Step 0*.
 2. **Reference image(s)** — one sheet with 4 views (front / back / side), or
    separate files. Names or positions both work; `split_views.py` auto-detects.
+   **The front and back must be visibly different materials** — a detail on the
+   back, a panel, lacing, an emblem, a stained nape. If they are not, say so
+   before rendering; see *Facing* below.
 3. **The animation, in words** — "走路" / "跑步" / "攻击一次" / "施法" /
    "受击后仰" / anything else. Pick a preset if it matches, otherwise pass the
    description through as `--describe`.
@@ -157,6 +205,14 @@ python $SKILL/scripts/split_views.py sheet.png --out views \
 
 Keep the transparent-background output (default). Only pass `--keep-bg` if H3
 needs the opaque backdrop.
+
+Then run the facing audit on the four PNGs you just produced — a character sheet
+cut from an image model is the most common source of a front and a back that are
+the same drawing, because the model was never asked to differ them:
+
+```bash
+python scripts/check_facing.py $PROJ/views
+```
 
 ### 1b. Give the motion room — the reference decides the crop
 
@@ -447,6 +503,9 @@ and says so. 56 is a good default: two full walk strides at 24 fps.
 
 ## Cost control
 
+- **Never spend a render on a reference that fails `check_facing`.** A back view
+  that drifts is not a clip you can pick your way out of — the whole direction is
+  unusable, so it is a re-render of every view with the seed shared again.
 - Render **one** side view and mirror it.
 - Start at 39 or 56 frames. More frames = more candidates, not better motion.
 - Route B doubles the render count. Pay for it only when the character is busy
@@ -461,6 +520,10 @@ and says so. 56 is a good default: two full walk strides at 24 fps.
 
 `references/pitfalls.md` collects the ones that cost real renders:
 
+- **Facing** — a reference whose front and back are the same picture makes the
+  model turn the figure around mid-clip; no prompt fixes it. Differ the two sides
+  in material, keep the outline identical, and gate it with `check_facing.py`
+  (`references/facing.md`).
 - **Framing** — H3 copies the reference's crop. A figure that fills its canvas
   comes back with the sword cut off the moment it swings. Pad to 48–58% before
   rendering (`prep_ref.py`, automatic in `generate.py`).
@@ -485,6 +548,8 @@ and says so. 56 is a good default: two full walk strides at 24 fps.
 ```
 scripts/
   h3client.py      ComfyUI H3 client (build / submit / wait / collect, HTTP upload staging)
+  check_facing.py  front vs back distinguishability audit (material_tv, silhouette, profiles)
+  mannequin.py     draws the 4-view proxy from one skeleton (material-coded front/back)
   split_views.py   sheet → per-view PNGs
   prep_ref.py      reference → square key-coloured canvas with margins (anti-crop, anti-black-frame)
   make_prompt.py   description → H3 prompt (presets + custom)
@@ -498,9 +563,13 @@ scripts/
 studio/
   index.html       Sprite Sheet Studio (single file, no build step)
 templates/
-  mannequin/       bundled route-B proxy: 4 views of a wooden dummy, 2 swords, on magenta
+  mannequin/       bundled route-B proxy: 4 views of a wooden dummy, 2 swords, transparent;
+                   front = harness + brass buckle, back = leather panel + X lacing + stained
+                   nape (same silhouette) — plus sheet_2x2.png, turnaround.png and
+                   facing_contract.json, which carries the audit the build ran
   beats/           beat text worth reusing (same file in both passes of a proxy run)
 references/
+  facing.md        front vs back: why the model loses the orientation, and the fix
   proxy-pass.md    route B: mannequin pass → character pass, and what may not change
   studio.md        full studio interaction model
   pitfalls.md      what breaks H3 sprite generation, and the fix

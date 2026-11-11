@@ -14,17 +14,28 @@ FRAMES="${4:-39}"
 
 mkdir -p "$PROJ"/{views,frames,out,videos,beats}
 
-echo "== 1/6 environment"
+echo "== 1/7 environment"
 python "$SKILL/scripts/generate.py" --health || {
   echo "   not on 8190? a ComfyUI Desktop install usually serves 8188:"
   echo "   export H3_SERVER=http://127.0.0.1:8188"
   exit 1
 }
 
-echo "== 2/6 split views"
+echo "== 2/7 split views"
 python "$SKILL/scripts/split_views.py" "$SHEET" --out "$PROJ/views"
 
-echo "== 3/6 generate (prep + one batch, one seed)"
+echo "== 3/7 facing audit"
+# A reference whose front and back are the same picture makes the model turn the
+# figure around mid-clip, and no prompt fixes it. This is a hard stop: every
+# back-view render would be wasted. See references/facing.md.
+if ! python "$SKILL/scripts/check_facing.py" "$PROJ/views"; then
+  echo "   FAIL — the front and back of this reference are the same picture."
+  echo "   Give one side a different MATERIAL (back panel, lacing, emblem, stained"
+  echo "   nape) and keep the outline identical, then re-run. Do not render yet."
+  exit 1
+fi
+
+echo "== 4/7 generate (prep + one batch, one seed)"
 # generate.py pads the reference onto a square key-coloured canvas first — that
 # is what stops a sword from leaving the frame. It prints the staged files.
 # EDIT the subject line to match the character in the reference image.
@@ -45,16 +56,16 @@ python "$SKILL/scripts/generate.py" \
   "${DESC_ARG[@]}" \
   --frames "$FRAMES" --seed 808080
 
-echo "== 4/6 mirror + manifests"
+echo "== 5/7 mirror + manifests"
 if [ -d "$PROJ/frames/$ACTION/right" ]; then
   python "$SKILL/scripts/mirror.py" "$PROJ/frames/$ACTION/right" "$PROJ/frames/$ACTION/left"
 fi
 python "$SKILL/scripts/manifest.py" "$PROJ/frames/$ACTION" --dirs front,back,left,right
 
-echo "== 5/6 studio (the user keys and picks here — do not export for them)"
+echo "== 6/7 studio (the user keys and picks here — do not export for them)"
 python "$SKILL/scripts/serve.py" --root "$PROJ" --frames "frames/$ACTION" --cmp 1x4 --open
 
-echo "== 6/6 after you export, bake previews:"
+echo "== 7/7 after you export, bake previews:"
 echo "   python $SKILL/scripts/bake_gifs.py $PROJ/out/$ACTION.png --out $PROJ/out"
 echo
 # MANDATORY: the clip goes into the conversation, not just in a sentence.

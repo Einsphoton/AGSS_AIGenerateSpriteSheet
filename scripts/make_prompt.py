@@ -77,17 +77,53 @@ def constraints(key_name: str | None = None, key_hex: str | None = None,
     return s
 
 # Views. 'left' and 'right' are the same clip mirrored; generate one of them.
+#
+# Each view says two things, and they are not the same thing:
+#   vdesc  — which side of the body this is
+#   anchor — the *evidence* for it, in plain nouns: what the camera can actually
+#            see. A reference whose front and back look alike (see
+#            references/facing.md) needs the prompt to name the difference, and
+#            naming concrete features is what makes the model look for them.
+#            Override per run with --anchor when the character has its own
+#            markers, e.g. "the camera sees the tall red cape and the silver
+#            clasp at the neck".
+#
+# Framing stays positive throughout: H3 inverts negations, so "the chest never
+# faces the camera" would summon exactly that.
 VIEWS = {
     "front": ("pure frontal view, the character facing the camera directly",
-              "its front to the camera"),
+              "its front to the camera",
+              "the camera sees the chest, the stomach, the fronts of both legs, "
+              "the tops of both feet and the face of the head"),
     "back": ("pure rear view, the character facing away from the camera",
-             "its back to the camera"),
+             "its back to the camera",
+             "the camera sees the back of the head, both shoulder blades, the "
+             "back of the torso and the heels of both feet"),
     "right": ("pure profile, the character's right flank to the camera, "
               "facing the right edge of the frame",
-              "its right flank to the camera"),
+              "its right flank to the camera",
+              "the camera sees one arm and one leg, the chest edge toward the "
+              "right of the frame and the back edge toward the left"),
     "left": ("pure profile, the character's left flank to the camera, "
              "facing the left edge of the frame",
-             "its left flank to the camera"),
+             "its left flank to the camera",
+             "the camera sees one arm and one leg, the chest edge toward the "
+             "left of the frame and the back edge toward the right"),
+}
+
+# Where the camera stands, stated as a fact that holds for the whole clip. The
+# failure this prevents: a back-view clip that starts with the back to the camera
+# and quietly turns around halfway through, which is unusable as sprite frames
+# because the character's facing changes mid-animation.
+FACING_LOCK = {
+    "front": "The camera stays in front of the figure for the entire clip and "
+             "the chest faces the camera at every frame.",
+    "back": "The camera stays behind the figure for the entire clip and the "
+            "back faces the camera at every frame.",
+    "right": "The camera stays on the figure's right side for the entire clip "
+             "and the figure faces the right edge of the frame at every frame.",
+    "left": "The camera stays on the figure's left side for the entire clip "
+            "and the figure faces the left edge of the frame at every frame.",
 }
 
 # --------------------------------------------------------------------------
@@ -269,10 +305,11 @@ def build_prompt(view: str, action: str, subject: str, seconds: float,
                  extra: str | None = None,
                  key_name: str | None = None,
                  key_hex: str | None = None,
-                 coverage: float | None = None) -> str:
+                 coverage: float | None = None,
+                 anchor: str | None = None) -> str:
     if view not in VIEWS:
         raise SystemExit(f"view must be one of {', '.join(VIEWS)}")
-    vdesc, _ = VIEWS[view]
+    vdesc, _phrase, default_anchor = VIEWS[view]
     preset = PRESETS.get(action, {})
     lim = limits if limits is not None else preset.get("limits", DEFAULT_LIMITS)
 
@@ -280,7 +317,8 @@ def build_prompt(view: str, action: str, subject: str, seconds: float,
         "The single subject from <Picture 1>",
         f"The single subject from <Picture 1> — {subject.strip()} —"
     )
-    setup += f" The view is {vdesc}."
+    setup += f" The view is {vdesc}: {(anchor or default_anchor).strip().rstrip('.')}."
+    setup += f" {FACING_LOCK[view]}"
 
     body = f"{beat_sheet(view, action, seconds, describe)} {limit_sentence(lim)}"
     if extra:
@@ -304,6 +342,9 @@ def main() -> int:
     ap.add_argument("--frames", type=int, default=56)
     ap.add_argument("--limits", help="comma list of what may move")
     ap.add_argument("--extra", help="one extra sentence appended to the body")
+    ap.add_argument("--anchor", help="what the camera can see in THIS view, in "
+                                     "plain nouns — replaces the generic "
+                                     "description (see references/facing.md)")
     ap.add_argument("--key", help="key colour as #RRGGBB (must match the backdrop)")
     ap.add_argument("--key-name", help="how to call the key colour in words")
     ap.add_argument("--coverage", type=float,
@@ -335,7 +376,8 @@ def main() -> int:
                           args.describe, limits, args.extra,
                           key_name=args.key_name or KEY_NAME,
                           key_hex=args.key or KEY_HEX,
-                          coverage=args.coverage)
+                          coverage=args.coverage,
+                          anchor=args.anchor)
 
     if args.print_context:
         print(json.dumps({

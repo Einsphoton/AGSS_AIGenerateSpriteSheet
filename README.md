@@ -4,16 +4,46 @@ Turn **one character reference sheet** into an **engine-ready pixel animation sp
 driven by a plain-language description of the animation.
 
 ```
-4-view image → split_views → prep_ref → generate (H3) → qc → studio (key+pick) → PNG + atlas
-   切图         四方向参考帧    补白·幕布    帧序列/videos   边缘质检   抠图·挑帧·导出
-                                  ↓
-                          videos/<action>_vNN_<view>.mp4   ← 每次渲染留档，带版本号
+4-view image → check_facing → split_views → prep_ref → generate (H3) → qc → studio (key+pick) → PNG + atlas
+   切图          朝向审计        四方向参考帧   补白·幕布   帧序列/videos   边缘质检   抠图·挑帧·导出
+                                               ↓
+                                     videos/<action>_vNN_<view>.mp4   ← 每次渲染留档，带版本号
 ```
 
 You give it a 4-view character sheet (front / back / side) and one sentence —
 "走路" / "跑步" / "攻击一次" / anything — and it runs the whole chain:
-split → reference prep → MiniMax H3 image-to-video → chroma key → frame QC →
-frame picking → PNG + atlas JSON.
+facing audit → split → reference prep → MiniMax H3 image-to-video → chroma key →
+frame QC → frame picking → PNG + atlas JSON.
+
+## The back view only works if the reference makes it work
+
+A back-view animation that turns the character around halfway, or a back
+direction that plays chest-first, is a reference problem, not a prompt problem.
+H3 reads the picture far more than the wording, so **if the front and back of the
+reference are the same drawing, "pure rear view" is a contradiction** and the
+model resolves it by rotating the figure. Measured on the mannequin this repo
+used to ship: identical dominant torso colour on both sides, colour separation
+`0.0`.
+
+The fix is material, never outline — the character pass inherits the proxy's
+silhouette, so a bump on the proxy becomes a backpack on the character:
+
+```bash
+python scripts/check_facing.py views/          # PASS / WEAK / FAIL, prints the numbers
+```
+
+| verdict | `material_tv` | meaning |
+| --- | --- | --- |
+| PASS | ≥ 0.22 | a fifth of the figure is a different material |
+| WEAK | 0.10–0.22 | expect the model to lose the facing on some frames |
+| FAIL | < 0.10 | to the model these are the same picture |
+
+The bundled mannequin scores `0.44` (leather back panel, X lacing, spine seam,
+stained nape) against `0.05` for the old one, with its silhouette unchanged at
+`IoU 0.99`. `generate.py` runs the audit before submitting; prompts now enumerate
+what the camera sees in each view and lock the camera for the whole clip, and
+`--anchor back="the tall red cape and the silver clasp"` supplies the character's
+own markers. Full diagnosis: [`references/facing.md`](references/facing.md).
 
 ## Two routes — the skill asks before it renders
 
@@ -34,8 +64,10 @@ a deliverable: the character pass produces the frames, and the user keys and
 picks those in Sprite Sheet Studio like any other run. Never hand over mannequin
 frames, and never script the export to skip the studio.
 
-A neutral dual-sword mannequin ships in `templates/mannequin/` (four views on
-magenta, 752²) with its prompt in `PROMPT.txt`, and the matching beat text in
+A neutral dual-sword mannequin ships in `templates/mannequin/` — four transparent
+views drawn from one skeleton by `scripts/mannequin.py`, with `sheet_2x2.png` and
+`turnaround.png` as magenta previews, `facing_contract.json` as the build's own
+audit, `PROMPT.txt` for the image-model fallback, and the matching beat text in
 `templates/beats/attack-dual-sword.txt`.
 
 ---
@@ -45,10 +77,10 @@ magenta, 752²) with its prompt in `PROMPT.txt`, and the matching beat text in
 | Path | What it is |
 | --- | --- |
 | `SKILL.md` | The agent skill definition — the pipeline, in order, with the rules that matter |
-| `scripts/` | The pipeline as plain CLI tools (`split_views`, `prep_ref`, `generate`, `qc`, `mirror`, `manifest`, `serve`, `bake_gifs`) |
+| `scripts/` | The pipeline as plain CLI tools (`check_facing`, `mannequin`, `split_views`, `prep_ref`, `generate`, `qc`, `mirror`, `manifest`, `serve`, `bake_gifs`) |
 | `studio/index.html` | **Sprite Sheet Studio** — single file, no build step: key, sample, pick frames, preview 4 directions, save/restore the whole project as a `.zip`, export |
 | `studio/test/` | `archive.e2e.js` — drives real Chrome over CDP to assert the project archive round-trips (all three source kinds) |
-| `references/` | `studio.md` (interaction model), `pitfalls.md` (what breaks H3 generation), `prompt-recipes.md`, `proxy-pass.md` (route B) |
+| `references/` | `studio.md` (interaction model), `pitfalls.md` (what breaks H3 generation), `facing.md` (front vs back), `prompt-recipes.md`, `proxy-pass.md` (route B) |
 | `templates/` | A runnable example (`run-example.sh`), a subject sample, a **mannequin proxy** (`mannequin/`) and reusable beat text (`beats/`) |
 
 ## Requirements
@@ -79,8 +111,9 @@ SKILL=~/.workbuddy/skills/AIGenerateSpriteSheet
 PROJ=./sprite-project
 mkdir -p $PROJ/{views,frames,out,videos}
 
-# 1. split the reference into per-view PNGs
+# 1. split the reference into per-view PNGs, then audit the facing
 python $SKILL/scripts/split_views.py character_sheet.png --out $PROJ/views
+python $SKILL/scripts/check_facing.py $PROJ/views      # must not print FAIL
 
 # 2. widen the canvas + composite onto the key colour (generate.py also does this for you)
 python $SKILL/scripts/prep_ref.py $PROJ/views --action attack --key auto
@@ -166,5 +199,8 @@ GIF is not a stand-in: 10 fps quantisation eats exactly the drift the clip exist
 - **`length % 17 == 5`** — 5, 22, 39, 56, 73, 90, 107, 124. 56 = two full strides at 24 fps.
 - **H3 drops negations.** "no third sword" produces more swords — phrase positively.
 - **The reference beats the prompt.** If they disagree, fix the reference, not the wording.
+- **A back view is only renderable if the reference distinguishes it.** Same front and back
+  picture = the figure turns around mid-clip, and no prompt helps. `check_facing.py` measures
+  it (`material_tv`); the fix is a different *material* on one side, never a different outline.
 
 Full list in [`references/pitfalls.md`](references/pitfalls.md).

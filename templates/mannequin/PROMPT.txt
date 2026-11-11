@@ -1,26 +1,58 @@
 Image prompt used to make the bundled proxy reference (route B).
-Regenerate a 2x2 four-view sheet with an image model, then split_views.py it.
-Edit the weapon line to match the character you are actually animating.
+Regenerate a 2x2 four-view sheet with an image model, then split_views.py it,
+then run check_facing.py on the result.
 
-Pixel art game sprite sheet, 2x2 grid of four panels on pure flat green #00FF00
-background, no white lines, no text, no logo, no watermark, no caption. The same
-plain wooden artist's mannequin character in all four panels: light birch wood,
-round ball joints at shoulders elbows wrists hips knees ankles, smooth
-featureless egg-shaped head with no face, no hair, no clothing, no armor. It
-holds one straight grey steel short sword in each hand, blades angled down and
-outward.
+NOTE: the bundled mannequin in this folder is not made from this prompt any
+more — it is drawn procedurally by ../../scripts/mannequin.py, because an image
+model will not hold one skeleton across four views, nor keep the silhouette
+identical while changing the material. Use this prompt when you need a proxy
+whose weapon or proportions match a specific character, and treat the output as
+a draft: check_facing.py decides whether it is usable.
 
-CRITICAL POSE DIFFERENCE per panel:
-TOP-LEFT  front view, facing the viewer, head-on, symmetric, both shoulders visible.
-TOP-RIGHT back view, we see the back of the featureless head and the back of the
-          torso, symmetric.
-BOTTOM-LEFT  TRUE SIDE PROFILE facing image-LEFT: body rotated exactly 90
-          degrees, only ONE arm and ONE leg visible, torso a thin vertical
-          silhouette, head profile points left, the two swords overlap and point
-          down-left.
-BOTTOM-RIGHT TRUE SIDE PROFILE facing image-RIGHT: the same, mirrored, head
-          profile points right.
+WHY THIS PROMPT SPELLS OUT THE BACK
+A reference whose front and back look the same makes the model turn the figure
+around mid-clip: it reads the picture far more than the prompt, so "pure rear
+view" in front of a frontal-looking drawing is a contradiction. The fix is a
+*different material* on the back — never a different outline, because the
+character pass inherits the proxy's silhouette.
+--------------------------------------------------------------------------
 
+Pixel art game sprite sheet, 2x2 grid of four panels on pure flat magenta
+#FF00FF background, no white lines, no text, no logo, no watermark, no caption.
+The same plain wooden artist's mannequin character in all four panels: pale
+birch wood, round ball joints at shoulders elbows wrists hips knees ankles,
+smooth featureless egg-shaped head with no face, no hair, no clothing, no armor.
+It holds one straight grey steel short sword in each hand, blades angled down
+and outward, the tips clear of the legs.
 Keep identical body proportions, identical sword design and identical scale in
 all four panels. Crisp hard-edged pixel clusters, limited flat palette, no
 anti-aliasing, centered characters with margins.
+
+THE FRONT AND THE BACK ARE DIFFERENT MATERIALS — this is the critical part:
+
+TOP-LEFT  front view, facing the viewer, head-on, symmetric, both shoulders
+          visible. Pale birch chest and face. A dark brown leather harness runs
+          in a shallow V from each shoulder to a small brass ring at the centre
+          of the sternum. A dark leather belt crosses the waist with a square
+          brass buckle at its centre. Two toes visible on each foot.
+
+TOP-RIGHT back view, we see the back of the head and the back of the torso,
+          symmetric. A broad DARK BROWN LEATHER BACK PANEL covers the upper back
+          from the shoulders to the waist, laced with a light cream X across the
+          shoulder blades and a vertical spine seam down the centre. The lower
+          back of the head is stained dark walnut, not pale birch. The belt is
+          plain, with no buckle. Heels visible on both feet, no toes.
+
+BOTTOM-LEFT  TRUE SIDE PROFILE facing image-LEFT: body rotated exactly 90
+          degrees, only ONE arm and ONE leg visible, torso a thin vertical
+          silhouette, head profile points left, the two swords overlap and point
+          down-left. Seen from the side, the rear half of the torso is the dark
+          leather panel and the front half is pale birch, and the back of the
+          head is stained dark.
+
+BOTTOM-RIGHT TRUE SIDE PROFILE facing image-RIGHT: the same, mirrored, head
+          profile points right, the dark back panel and the stained nape are now
+          on the right-hand side of each form.
+
+The outline and the pose of the front and the back are IDENTICAL — the two sides
+differ only in material and in the details listed above.

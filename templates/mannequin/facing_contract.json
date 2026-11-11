@@ -1,0 +1,43 @@
+{
+ "generator": "scripts/mannequin.py",
+ "scale": 3,
+ "unit_canvas": [
+  64,
+  88
+ ],
+ "figure_units": 77.5,
+ "front_markers": [
+  "pale birch chest and face",
+  "leather harness in a V meeting a brass ring at the sternum",
+  "brass belt buckle at centre",
+  "toe split on each foot"
+ ],
+ "back_markers": [
+  "dark leather back panel with light X lacing over the shoulder blades",
+  "vertical spine seam from the neck to the waist",
+  "stained walnut nape over the lower part of the back of the head",
+  "plain belt, no buckle",
+  "heel pad instead of a toe split"
+ ],
+ "profile_markers": [
+  "rear half of the torso is the leather panel, front half pale wood",
+  "nape stained on the back of the skull",
+  "toes point the way the figure faces"
+ ],
+ "invariants": [
+  "front and back share one silhouette on purpose: the character pass inherits the proxy silhouette, so an extra bump becomes a backpack",
+  "identical head-to-heel height and pixel scale in all four views",
+  "one arm and one leg in the profile views"
+ ],
+ "rule": "the difference between the two sides is material, never outline",
+ "verify": "python scripts/check_facing.py C:\\Users\\renjiangfeng\\WorkBuddy\\2026-11-11-21-53-15\\repo\\templates\\mannequin",
+ "facing_audit": {
+  "verdict": "PASS",
+  "score": 0.443,
+  "whole": 0.175,
+  "torso": 0.278,
+  "head": 0.443,
+  "silhouette_iou": 0.989,
+  "mirror_iou": 0.992
+ }
+}

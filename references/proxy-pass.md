@@ -21,7 +21,7 @@ about the motion before paying for the character.
 | --- | --- |
 | `--seed` | `--views` (mannequin views → character views) |
 | the beat text (`--describe-file`) | `--subject` |
-| `--frames`, `--size` | |
+| `--frames`, `--size` | `--anchor` (it names what the camera sees, and the two passes see different things) |
 | `--coverage`, `--key` | |
 
 Change any of the first column and you are not re-using a motion, you are
@@ -36,21 +36,40 @@ than letting each one auto-pick.
 
 ## 1. Get a mannequin reference
 
-The skill ships one: `templates/mannequin/{front,back,left,right}.png` — a plain
-birch-wood artist's dummy with ball joints, featureless head, one straight short
-sword in each hand, on magenta.
+The skill ships one: `templates/mannequin/{front,back,left,right}.png` — a pale
+birch artist's dummy with ball joints and a featureless head, one straight short
+sword in each hand, **drawn so that its front and back cannot be confused**: the
+chest carries a leather harness and a brass buckle, the back carries a dark
+leather panel with X lacing, a spine seam and a stained walnut nape. Same
+silhouette, different material.
 
 ```bash
 mkdir -p $PROJ/views_proxy
 cp $SKILL/templates/mannequin/*.png $PROJ/views_proxy/
 ```
 
+That distinction is the whole reason the back view renders at all — a proxy whose
+two sides are the same picture makes the model turn the figure around mid-clip no
+matter what the prompt says. See [`facing.md`](facing.md). If you replace the
+dummy, verify the replacement before rendering:
+
+```bash
+python scripts/check_facing.py $PROJ/views_proxy     # must print PASS
+```
+
 It already holds two swords, so it is the right proxy for dual-wield, unarmed,
 and most single-weapon motions (the second sword is ignored by the beats). If the
 character carries something with a very different silhouette — a staff, a bow, a
-shield, a greatsword, four arms — generate a matching proxy instead. The prompt
-for the bundled one is in `templates/mannequin/PROMPT.txt`; edit the weapon line
-and regenerate a 2×2 four-view sheet, then `split_views.py` it.
+shield, a greatsword, four arms — regenerate it:
+
+```bash
+python scripts/mannequin.py --out $PROJ/views_proxy # same skeleton, four views
+```
+
+`mannequin.py` draws one skeleton and projects it four ways, so proportions,
+scale and the head-to-heel line cannot drift between panels. It is the reliable
+path; `templates/mannequin/PROMPT.txt` is the image-model fallback, and its
+output still needs `check_facing.py` to pass before it is worth a render.
 
 Keep the proxy's framing loose. A proxy that fills its own canvas will produce a
 chopped-up motion in the pass you trust most.

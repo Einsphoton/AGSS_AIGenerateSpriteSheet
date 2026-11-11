@@ -113,6 +113,48 @@ reference), not the prompt.
 
 ---
 
+## Front and back look the same
+
+The most expensive version of *first frame dominates*, and the only one where a
+prompt cannot help at all: if the front and back views of the reference are the
+same picture, then "pure rear view, the character facing away from the camera"
+contradicts the reference, and H3 resolves that by turning the figure around
+mid-clip — or by playing the whole back direction chest-first.
+
+Measured on the mannequin that used to ship with this skill: dominant torso
+colour `(240, 208, 144)` on the front **and** `(240, 208, 144)` on the back,
+colour separation `0.0`. One drawing, two filenames.
+
+**The rule: the two sides differ in material, never in outline.** Silhouette is
+what the character pass inherits, so an extra bump on the proxy becomes a
+backpack on the character.
+
+| do | don't |
+| --- | --- |
+| a back panel / mantle / cape over the upper back | a slightly different shade of the same colour |
+| lacing, straps, a spine seam, visible stitching | anything that adds to the outline |
+| an emblem on the chest and a bare back | a marker on one forearm or one boot |
+| a stained nape, or a helm crest at the back of the head | a marker colour that matches the chroma key |
+| toes at the front of the foot, heels at the back | leaving the feet identical |
+
+Measure it instead of arguing about it:
+
+```bash
+python scripts/check_facing.py views/            # PASS / WEAK / FAIL
+```
+
+`generate.py` runs this before submitting. The bundled mannequin scores `0.44`
+(leather back panel + stained nape, silhouette `IoU 0.99` unchanged); the old one
+scores `0.05`. Full diagnosis, and the equivalent moves for a character
+reference, in [`facing.md`](facing.md).
+
+The prompt half of the fix is already in `make_prompt.py`: every view now
+enumerates what the camera can see, and locks the camera for the whole clip.
+Override the enumeration with `--anchor back="…"` when the character has its own
+markers.
+
+---
+
 ## The frame is a crop, and H3 copies it
 
 A reference that fills its canvas is read as "this is the whole character, and

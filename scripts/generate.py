@@ -67,6 +67,30 @@ def view_image(views_dir: str, view: str) -> str | None:
     return None
 
 
+def parse_anchors(specs: list[str] | None, views: list[str]) -> dict[str, str]:
+    """`--anchor back=the tall red cape and the silver clasp` — the visible
+    evidence for one view, when the character's own markers are the thing that
+    makes the facing unambiguous. A bare string applies to every rendered view
+    when only one view is being rendered; otherwise it is ignored with a note,
+    because the same sentence on a front and a back prompt is a contradiction."""
+    out: dict[str, str] = {}
+    if not specs:
+        return out
+    for spec in specs:
+        if "=" in spec:
+            v, text = spec.split("=", 1)
+            v = v.strip().lower()
+            if v in ("left", "right", "front", "back"):
+                out[v] = text.strip()
+                continue
+        if len(views) == 1:
+            out[views[0]] = spec.strip()
+        else:
+            print(f"note: --anchor '{spec[:40]}…' has no view prefix — pass "
+                  f"--anchor back=… / --anchor front=…", file=sys.stderr)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--views", help="folder with front.png/back.png/right.png")
@@ -81,6 +105,12 @@ def main() -> int:
     ap.add_argument("--describe-file", help="read the beat text from a file — "
                                           "same file in both passes of a proxy run")
     ap.add_argument("--extra", help="extra sentence appended to every prompt")
+    ap.add_argument("--anchor", action="append",
+                    help="view=text: what the camera can see in that view, in "
+                         "plain nouns (default depends on the view). Repeat for "
+                         "several views. See references/facing.md")
+    ap.add_argument("--no-facing-check", action="store_true",
+                    help="skip the front/back distinguishability audit")
     ap.add_argument("--limits", help="comma list of parts allowed to move")
     ap.add_argument("--frames", type=int, default=56)
     ap.add_argument("--size", type=int, default=768)
@@ -157,6 +187,26 @@ def main() -> int:
     if key["warn"]:
         print(f"WARN     {key['warn']}")
 
+    # ---- facing: is the back view actually a back view? -------------------
+    # Runs before anything is submitted, because a reference whose front and
+    # back are the same picture costs a whole render per view to discover. See
+    # references/facing.md — the fix is the reference, not the prompt.
+    if not args.no_facing_check:
+        pair = {v: os.path.join(args.views, f"{v}.png") for v in ("front", "back")}
+        if all(os.path.exists(p) for p in pair.values()):
+            try:
+                import check_facing as cf
+                aud = cf.audit(args.views)
+                print(f"facing   {aud['verdict']}  material_tv {aud['score']:.2f}  "
+                      f"(torso {aud['torso']['material_tv']:.2f}, "
+                      f"head {aud['head']['material_tv']:.2f})")
+                for n in aud["notes"]:
+                    print(f"WARN     {n}")
+            except SystemExit as e:
+                print(f"facing   skipped: {e}")
+        else:
+            print("facing   skipped: needs both front.png and back.png")
+
     # ---- framing: pad so a sword cannot leave the frame --------------------
     cov = args.coverage
     if cov == "auto":
@@ -182,6 +232,10 @@ def main() -> int:
             print(f"         note: {res['warning']}")
 
     # ---- prompts ----------------------------------------------------------
+    anchors = parse_anchors(args.anchor, list(sources))
+    if anchors:
+        for v, text in anchors.items():
+            print(f"anchor {v:6s} {text}")
     jobs = []
     for v in sources:
         prompt = mp.build_prompt(
@@ -189,6 +243,7 @@ def main() -> int:
             describe=describe,
             limits=[s.strip() for s in args.limits.split(",")] if args.limits else None,
             extra=args.extra, key_name=key_name, key_hex=key_hex, coverage=cov,
+            anchor=anchors.get(v),
         )
         pfile = os.path.join(args.out, f"prompt_{v}.txt")
         with open(pfile, "w", encoding="utf-8") as f:
