@@ -4,12 +4,17 @@ The whole point of this file is that **the animation is data, not code**. A new
 action ("attack with an overhead swing", "cast a fireball", "take a hit and
 stagger back") is a new preset or a new sentence — never a new script.
 
-Two levels of customisation:
+Three levels of customisation:
 
   1. ``--action walk`` picks a preset from PRESETS (walk / run / idle / attack /
      cast / hurt / jump / custom).
   2. ``--describe "..."`` appends your own beat text; with ``--action custom``
      it replaces the preset's performance section outright.
+  3. ``board=`` (a storyboard dict, see storyboard.py) replaces both and adds
+     the consistency contract: the beats, their exact times, the per-view
+     evidence lines and the invariants all come from one file, so the four
+     directions are one performance instead of four paraphrases. This is what
+     `generate.py --storyboard` passes in.
 
 Everything that makes H3 output usable as a sprite source lives in CONSTRAINTS
 and is not optional. Read the comments before editing them.
@@ -135,6 +140,7 @@ PRESETS: dict[str, dict] = {
     "walk": {
         "label": "走路循环",
         "strides": 2,
+        "marks": ["迈步", "过渡", "换腿", "归位"],
         "limits": ["legs", "arms", "the lower garment"],
         "beats": [
             (0.00, "the NEAR foot swings forward in a clear arc, knee lifting "
@@ -152,6 +158,7 @@ PRESETS: dict[str, dict] = {
     "run": {
         "label": "跑步循环",
         "strides": 2,
+        "marks": ["蹬地", "腾空", "换腿", "落地"],
         "limits": ["legs", "arms", "the lower garment"],
         "beats": [
             (0.00, "the NEAR knee drives up high and the near foot reaches "
@@ -170,6 +177,7 @@ PRESETS: dict[str, dict] = {
     "idle": {
         "label": "待机呼吸",
         "strides": 1,
+        "marks": ["静立", "吸气", "呼气", "重心微移"],
         "limits": ["torso", "arms"],
         "beats": [
             (0.00, "the character stands with the weight settled, shoulders low"),
@@ -184,6 +192,7 @@ PRESETS: dict[str, dict] = {
     "attack": {
         "label": "攻击一次",
         "strides": 1,
+        "marks": ["起手", "挥出", "命中", "收势"],
         "limits": ["arms", "torso", "legs"],
         "beats": [
             (0.00, "the character winds up, the striking arm drawing back and up "
@@ -201,6 +210,7 @@ PRESETS: dict[str, dict] = {
     "cast": {
         "label": "施法",
         "strides": 1,
+        "marks": ["聚气", "推出", "定格", "收回"],
         "limits": ["arms", "torso"],
         "beats": [
             (0.00, "the character brings both hands together in front of the "
@@ -218,6 +228,7 @@ PRESETS: dict[str, dict] = {
     "hurt": {
         "label": "受击后仰",
         "strides": 1,
+        "marks": ["站立", "受击", "后挫", "回正"],
         "limits": ["arms", "torso", "legs"],
         "beats": [
             (0.00, "the character stands in the opening stance"),
@@ -233,6 +244,7 @@ PRESETS: dict[str, dict] = {
     "jump": {
         "label": "跳跃",
         "strides": 1,
+        "marks": ["下蹲", "起跳", "最高点", "落地"],
         "limits": ["legs", "arms", "torso"],
         "beats": [
             (0.00, "the character crouches, knees bending deeply, arms swinging "
@@ -299,6 +311,57 @@ def limit_sentence(limits: list[str]) -> str:
             f"character and the background stays pixel-identical.")
 
 
+# --------------------------------------------------------------------------
+# Storyboard → prompt
+# --------------------------------------------------------------------------
+# With a storyboard, the beats, their exact times, the per-view evidence and the
+# invariants all come from one file. What that buys over --describe: every view
+# reads *the same sentences at the same seconds*, which is the only thing that
+# makes four independent H3 calls one performance. H3 has no memory between
+# calls — the board is the memory.
+
+CONTRACT = ("This clip is one camera pass of a single performance: the beats, "
+            "their timing, the weight and the silhouette are identical in every "
+            "pass, and each beat time stated here is exact.")
+
+
+def beat_sheet_from_board(board: dict, view: str | None = None,
+                          seconds: float | None = None) -> str:
+    """Beats → one paragraph, with this view's evidence bound to each beat.
+
+    The evidence line is optional and deliberately short: it exists because a
+    beat reads differently from the front than from the side ("both hands push
+    forward" vs "one arm crosses the chest edge"), and leaving that to inference
+    is what makes the side view improvise a different motion.
+    """
+    secs = seconds if seconds is not None else (
+        board.get("seconds") or (board.get("frames") or 56) / 24.0)
+    parts: list[str] = []
+    for b in board.get("beats") or []:
+        t = float(b.get("frac", 0.0)) * float(secs)
+        motion = str(b.get("motion", "")).strip().rstrip(".")
+        if motion:
+            parts.append(f"At {t:.2f} seconds, {motion}.")
+        see = str((b.get("see") or {}).get(view or "") or "").strip().rstrip(".")
+        if see:
+            parts.append(f"In this view, at {t:.2f} seconds, {see}.")
+    close = str(board.get("close") or "").strip()
+    if close:
+        parts.append(close)
+    return " ".join(parts)
+
+
+def contract_sentence(board: dict) -> str:
+    """The invariants, as one sentence the model has to satisfy in this view."""
+    inv = [str(i).strip().rstrip(". ") for i in (board.get("invariants") or [])
+           if str(i).strip()]
+    s = CONTRACT
+    if inv:
+        joined = "; ".join(inv)
+        s += " " + joined[0].upper() + joined[1:] + "."
+    return s
+
+
 def build_prompt(view: str, action: str, subject: str, seconds: float,
                  describe: str | None = None,
                  limits: list[str] | None = None,
@@ -306,12 +369,16 @@ def build_prompt(view: str, action: str, subject: str, seconds: float,
                  key_name: str | None = None,
                  key_hex: str | None = None,
                  coverage: float | None = None,
-                 anchor: str | None = None) -> str:
+                 anchor: str | None = None,
+                 board: dict | None = None) -> str:
     if view not in VIEWS:
         raise SystemExit(f"view must be one of {', '.join(VIEWS)}")
     vdesc, _phrase, default_anchor = VIEWS[view]
     preset = PRESETS.get(action, {})
-    lim = limits if limits is not None else preset.get("limits", DEFAULT_LIMITS)
+    if board is not None and limits is None:
+        lim = list(board.get("limits") or DEFAULT_LIMITS)
+    else:
+        lim = limits if limits is not None else preset.get("limits", DEFAULT_LIMITS)
 
     setup = constraints(key_name, key_hex, coverage).replace(
         "The single subject from <Picture 1>",
@@ -320,7 +387,13 @@ def build_prompt(view: str, action: str, subject: str, seconds: float,
     setup += f" The view is {vdesc}: {(anchor or default_anchor).strip().rstrip('.')}."
     setup += f" {FACING_LOCK[view]}"
 
-    body = f"{beat_sheet(view, action, seconds, describe)} {limit_sentence(lim)}"
+    if board is not None:
+        # The board owns the performance. `describe` is ignored on purpose: a
+        # paraphrased overlay is exactly the drift the board exists to remove.
+        body = (f"{beat_sheet_from_board(board, view, seconds)} "
+                f"{limit_sentence(lim)} {contract_sentence(board)}")
+    else:
+        body = f"{beat_sheet(view, action, seconds, describe)} {limit_sentence(lim)}"
     if extra:
         body += " " + extra.strip()
 

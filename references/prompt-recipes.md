@@ -1,8 +1,18 @@
 # Prompt recipes for actions outside the presets
 
 The presets (`walk`, `run`, `idle`, `attack`, `cast`, `hurt`, `jump`) cover the
-common cases. When the user asks for something else, build it from the patterns
-below and pass it via `--describe`.
+common cases. When the user asks for something else, build the beats from the
+patterns below — then put them in a **storyboard** and render from that
+(`references/storyboard.md`):
+
+```bash
+python scripts/storyboard.py init --action slash --kind one-shot \
+  --from beats/slash.txt --out beats/slash.storyboard.json
+```
+
+`--describe` still works for a single-view experiment, but it is one blob of text
+shared by every view with no per-view evidence and no recorded parameters — which
+is exactly what makes four directions drift apart.
 
 ## The shape every recipe follows
 

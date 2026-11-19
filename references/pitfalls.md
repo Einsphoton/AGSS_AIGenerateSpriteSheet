@@ -13,10 +13,33 @@ a half. Measured on the same prompt with mixed seeds: a **33% spread** in
 frames-per-stride. With one shared seed and identical beat wording: **9%**.
 
 **Do**: submit all views in one batch, same seed, same frame count, same beat
-sentences. `generate.py` does this; keep it that way.
+sentences. `generate.py` does this; keep it that way. Better: put those numbers
+and those sentences in a storyboard (one file, read by every view) rather than in
+four command lines that can drift — `references/storyboard.md`.
 
 **Don't**: tune one view at a time to "match" another. You are chasing a moving
 target — the next render moves it again.
+
+---
+
+## Drift: the four directions quietly stop being one character
+
+The seed is the biggest lever, not the only one. Everything that is written into
+each prompt separately can drift between views:
+
+| what diverges | how it shows up | where it is fixed |
+| --- | --- | --- |
+| the beat text | the side view does the motion in a different order, or hits the extreme at a different second | `beats` in the storyboard, one list for all views |
+| `coverage` / `frames` | one direction's figure is a different size — the sheet pops when the character turns | `coverage`, `frames` |
+| `limits` | the cape flaps from the front and stands still from behind | `limits` |
+| the view anchor | the back view turns around halfway | `views.back.anchor` |
+
+`generate.py` prints where each of those values came from (`board` / `flag` /
+`default`) and then measures the outcome: `qc.py` per view, plus a cross-view gate
+that fails the batch when the median body height disagrees by more than 18%
+(the frames cannot share one cell size) and notes an 8%+ spread or mismatched
+frame counts. Rhythm has no still-frame measurement — same beats, same seed, same
+frames is the whole guarantee, and the clip is the only proof.
 
 ---
 

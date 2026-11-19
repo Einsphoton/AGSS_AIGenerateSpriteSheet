@@ -1,0 +1,61 @@
+{
+ "schema": "pixel-sprite-storyboard/1",
+ "action": "walk",
+ "label": "走路循环",
+ "kind": "loop",
+ "note": "散步速度，两步一个循环，手空着",
+ "subject": "a chibi armored warrior with a red horsehair plume and a long red cape, one silver broadsword",
+ "fps": 24,
+ "frames": 56,
+ "seed": 808080,
+ "key": "auto",
+ "coverage": "auto",
+ "limits": [
+  "legs",
+  "arms",
+  "torso",
+  "cape",
+  "plume"
+ ],
+ "invariants": [
+  "identical proportions, colors and costume details in every frame",
+  "the camera is locked off for the whole clip",
+  "the weight stays over the feet and a planted foot never slides",
+  "every beat lands at its stated second, in every direction",
+  "the sword stays in the right hand at the same angle throughout"
+ ],
+ "beats": [
+  {
+   "frac": 0.0,
+   "mark": "迈步",
+   "motion": "the NEAR foot swings forward in a clear arc, knee lifting high enough to push the hem up, and plants ahead of the far foot; the far foot pushes back so the stride is wide."
+  },
+  {
+   "frac": 0.25,
+   "mark": "过渡",
+   "motion": "both feet gather under the hips and the body rises to the passing pose."
+  },
+  {
+   "frac": 0.5,
+   "mark": "换腿",
+   "motion": "the FAR foot swings forward and plants ahead while the near foot drives back — the legs visibly swap places."
+  },
+  {
+   "frac": 0.75,
+   "mark": "归位",
+   "motion": "gather and rise, then land back on the opening stance."
+  }
+ ],
+ "close": "The final pose matches the opening pose so the last frame can be followed directly by the first.",
+ "views": {
+  "front": {
+   "anchor": "the red chest emblem, both shoulder guards and the face under the plume"
+  },
+  "back": {
+   "anchor": "the long red cape hanging over the whole back and the plume from behind"
+  },
+  "right": {}
+ },
+ "renders": [],
+ "seconds": 2.3333
+}

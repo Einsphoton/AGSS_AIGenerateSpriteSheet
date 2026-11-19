@@ -4,16 +4,65 @@ Turn **one character reference sheet** into an **engine-ready pixel animation sp
 driven by a plain-language description of the animation.
 
 ```
-4-view image → check_facing → split_views → prep_ref → generate (H3) → qc → studio (key+pick) → PNG + atlas
-   切图          朝向审计        四方向参考帧   补白·幕布   帧序列/videos   边缘质检   抠图·挑帧·导出
-                                               ↓
-                                     videos/<action>_vNN_<view>.mp4   ← 每次渲染留档，带版本号
+                    ┌── storyboard.json ──┐   一拍四机位的唯一真源：节拍/秒数/各方向证据/共用 seed
+                    ↓                     ↓
+4-view image → 分镜脚本 → check_facing → split_views → prep_ref → generate (H3) → qc+跨方向 → studio → PNG + atlas
+   切图                  朝向审计        四方向参考帧   补白·幕布   帧序列/videos   边缘/比例质检   抠图·挑帧·导出
+                                                              ↓
+                                                    videos/<action>_vNN_<view>.mp4   ← 每次渲染留档，带版本号
 ```
 
 You give it a 4-view character sheet (front / back / side) and one sentence —
 "走路" / "跑步" / "攻击一次" / anything — and it runs the whole chain:
-facing audit → split → reference prep → MiniMax H3 image-to-video → chroma key →
-frame QC → frame picking → PNG + atlas JSON.
+**storyboard** → facing audit → split → reference prep → MiniMax H3
+image-to-video → chroma key → frame QC → frame picking → PNG + atlas JSON.
+
+Two things it deliberately does not do: render before the script exists, and stop
+to ask whether the motion looks right.
+
+## One script, four directions
+
+H3 is image-to-video and calls are independent — it has no memory of the front
+view when it renders the back. Everything that makes four clips one animation is
+therefore whatever you write into each prompt, and the fastest way to lose it is
+to paraphrase. Measured here: mixed seeds give up to **33% stride spread** across
+views (9% shared), and paraphrased beats add beat-order drift on top.
+
+So the animation is written down once, as `beats/<action>.storyboard.json`:
+
+```json
+{"action": "walk", "kind": "loop", "frames": 56, "seed": 808080,
+ "subject": "a chibi armored warrior with a red plume and a long red cape",
+ "limits": ["legs", "arms", "torso", "cape", "plume"],
+ "beats": [
+   {"frac": 0.00, "mark": "迈步", "motion": "the near foot swings forward ... plants ahead of the far foot"},
+   {"frac": 0.25, "mark": "过渡", "motion": "both feet gather under the hips ...",
+    "see": {"right": "the front leg straightens under the hip while the back leg lifts behind it"}}],
+ "close": "The final pose matches the opening pose so the last frame can be followed by the first.",
+ "views": {"front": {"anchor": "the red chest emblem and the face under the plume"},
+           "back":  {"anchor": "the long red cape over the whole back"}, "right": {}},
+ "renders": []}
+```
+
+`generate.py --storyboard` reads it and nothing else: `seed`, `frames`, `key`,
+`coverage`, `limits`, `subject` and the beats are the same for every direction by
+construction, and the only per-view fields are `anchor` (what that camera can
+see) and `see` (how one beat reads from that camera). The run prints where each
+value came from (`board` / `flag` / `default`), so a stale flag cannot quietly
+split the batch; the result is then *checked* — `qc.py` per view plus a
+cross-view gate that fails the batch when the directions disagree on the
+character's size, and `renders` records every version with its verdict.
+
+```bash
+python scripts/storyboard.py init  --action walk --subject "..." --out beats/walk.storyboard.json
+python scripts/storyboard.py check beats/walk.storyboard.json     # refuses the mistakes that cost a batch
+python scripts/storyboard.py table beats/walk.storyboard.json --out beats/walk.md   # 分镜表 + 一致性契约
+python scripts/storyboard.py plan  beats/walk.storyboard.json     # the commands, with every shared flag
+```
+
+Schema, beat-writing rules and the `check` message catalogue:
+[`references/storyboard.md`](references/storyboard.md). Worked examples ship in
+`templates/beats/`.
 
 ## The back view only works if the reference makes it work
 
@@ -45,19 +94,19 @@ what the camera sees in each view and lock the camera for the whole clip, and
 `--anchor back="the tall red cape and the silver clasp"` supplies the character's
 own markers. Full diagnosis: [`references/facing.md`](references/facing.md).
 
-## Two routes — the skill asks before it renders
+## Two routes — one question, asked once
 
 |  | **A — direct** | **B — proxy pass** |
 | --- | --- | --- |
 | what gets rendered | the target character, once | a plain, empty-handed mannequin, then the character, **same seed + same beats** |
 | cost | 1× (≈2–4 min per view) | 2× |
 | motion when the character is busy | H3 spends attention on cape / plume / layered armour and the beats go mushy | the mannequin has nothing to get wrong, so the beats land cleanly and the second pass inherits the timing |
-| wins when | simple silhouette, one weapon, tight budget | capes, long hair, plumes, dual weapons, layered armour, or the user wants to judge the motion before committing |
+| wins when | simple silhouette, one weapon, tight budget | capes, long hair, plumes, dual weapons, layered armour |
 
-Route B is the same pipeline run twice and only `--views` / `--subject` change
-between passes — everything else (`--seed`, beat text, `--frames`, `--coverage`,
-`--key`) must be identical, or the second pass is a new animation rather than a
-reskin. Full contract in [`references/proxy-pass.md`](references/proxy-pass.md).
+Route B is the same storyboard rendered twice: only `--views` and `--subject`
+change between passes, and everything else comes from the file in both runs, so
+the second pass cannot drift from the first. Full contract in
+[`references/proxy-pass.md`](references/proxy-pass.md).
 
 **Route B still ends in the studio.** The mannequin pass is a motion sketch, not
 a deliverable: the character pass produces the frames, and the user keys and
@@ -98,9 +147,11 @@ python $SKILL/scripts/mannequin.py --out $PROJ/proxy_views --weapon staff   # or
 python $SKILL/scripts/mannequin.py --all        # rebuild every variant + overview.png
 ```
 
-Beat text worth reusing ships in `templates/beats/`: `walk.txt` (unarmed, and the
-neutral one to start from) and `attack-dual-sword.txt` (pair it with the
-dual-sword proxy).
+Beat text and storyboards worth reusing ship in `templates/beats/`:
+`walk.storyboard.json` (4 beats, loop, the neutral one to start from),
+`attack-dual-sword.storyboard.json` (5 beats with per-view `see` lines, pair it
+with the dual-sword proxy) and the plain text they were built from
+(`walk.txt`, `attack-dual-sword.txt`).
 
 ---
 
@@ -109,11 +160,11 @@ dual-sword proxy).
 | Path | What it is |
 | --- | --- |
 | `SKILL.md` | The agent skill definition — the pipeline, in order, with the rules that matter |
-| `scripts/` | The pipeline as plain CLI tools (`check_facing`, `mannequin`, `split_views`, `prep_ref`, `generate`, `qc`, `mirror`, `manifest`, `serve`, `bake_gifs`) |
+| `scripts/` | The pipeline as plain CLI tools (`storyboard`, `check_facing`, `mannequin`, `split_views`, `prep_ref`, `generate`, `qc`, `mirror`, `manifest`, `serve`, `bake_gifs`) |
 | `studio/index.html` | **Sprite Sheet Studio** — single file, no build step: key, sample, pick frames, preview 4 directions, save/restore the whole project as a `.zip`, export |
 | `studio/test/` | `archive.e2e.js` — drives real Chrome over CDP to assert the project archive round-trips (all three source kinds) |
-| `references/` | `studio.md` (interaction model), `pitfalls.md` (what breaks H3 generation), `facing.md` (front vs back), `prompt-recipes.md`, `proxy-pass.md` (route B) |
-| `templates/` | A runnable example (`run-example.sh`), a subject sample, a **mannequin proxy** (`mannequin/`, empty-handed, plus `weapons/` variants) and reusable beat text (`beats/`) |
+| `references/` | `storyboard.md` (the script, the contract, the `check` messages), `studio.md` (interaction model), `pitfalls.md` (what breaks H3 generation), `facing.md` (front vs back), `prompt-recipes.md`, `proxy-pass.md` (route B) |
+| `templates/` | A runnable example (`run-example.sh`), a subject sample, a **mannequin proxy** (`mannequin/`, empty-handed, plus `weapons/` variants), and storyboard + beat-text examples (`beats/`) |
 
 ## Requirements
 
@@ -141,21 +192,27 @@ git clone https://github.com/Einsphoton/AGSS_AIGenerateSpriteSheet.git \
 ```bash
 SKILL=~/.workbuddy/skills/AIGenerateSpriteSheet
 PROJ=./sprite-project
-mkdir -p $PROJ/{views,frames,out,videos}
+mkdir -p $PROJ/{views,frames,out,videos,beats}
 
 # 1. split the reference into per-view PNGs, then audit the facing
 python $SKILL/scripts/split_views.py character_sheet.png --out $PROJ/views
 python $SKILL/scripts/check_facing.py $PROJ/views      # must not print FAIL
 
-# 2. widen the canvas + composite onto the key colour (generate.py also does this for you)
-python $SKILL/scripts/prep_ref.py $PROJ/views --action attack --key auto
+# 2. write the storyboard（分镜）— beats, times, per-view evidence, shared params
+python $SKILL/scripts/storyboard.py init --action walk \
+  --subject "a chibi armored warrior with a red plume and a long red cape" \
+  --limits "legs,arms,torso,cape,plume" --out $PROJ/beats/walk.storyboard.json
+python $SKILL/scripts/storyboard.py check $PROJ/beats/walk.storyboard.json
+python $SKILL/scripts/storyboard.py table $PROJ/beats/walk.storyboard.json --out $PROJ/beats/walk.md
 
-# 3. render all views in one batch, one shared seed
+# 3. render all views in one batch from that one file
+#    (generate.py also widens the canvas onto the key colour, picks the key from
+#     the character's own pixels, and validates the board before submitting)
 python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/walk \
-  --action walk --subject "a chibi armored warrior with a red plume" --frames 56
+  --storyboard $PROJ/beats/walk.storyboard.json
 
-# 4. quality gate — edge cropping, empty/black frames, backdrop purity
-python $SKILL/scripts/qc.py frames $PROJ/frames/walk --key auto --action attack
+# 4. quality gate — edge cropping, empty/black frames, backdrop purity, cross-view scale
+python $SKILL/scripts/qc.py frames $PROJ/frames/walk --key auto --action walk
 
 # 5. mirror one side instead of rendering both
 python $SKILL/scripts/mirror.py $PROJ/frames/walk/right $PROJ/frames/walk/left
@@ -170,19 +227,18 @@ python $SKILL/scripts/serve.py --root $PROJ --frames frames/walk --cmp 2x2 --ope
 python $SKILL/scripts/bake_gifs.py $PROJ/out/walk.png --fps 10 --out $PROJ/out
 ```
 
-Route B replays steps 3–4 twice against two `--views` folders, with the same
-`--seed`, the same `--describe-file`, the same `--frames / --coverage / --key`:
+Route B replays step 3 twice against two `--views` folders, with the **same
+board** — only `--subject` changes:
 
 ```bash
 # pass 1 — block the motion with the mannequin (default: empty hands)
 python $SKILL/scripts/generate.py --views $PROJ/proxy_views --out $PROJ/frames/walk_proxy \
-  --action walk --subject "a plain wooden mannequin, empty hands, no weapon" \
-  --describe-file $SKILL/templates/beats/walk.txt --frames 39 --seed 808080
+  --storyboard $PROJ/beats/walk.storyboard.json \
+  --subject "a plain wooden mannequin, empty hands, no weapon"
 
-# pass 2 — same seed, same beats, the real character
+# pass 2 — same board, same seed, same beats, the real character
 python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/walk \
-  --action walk --subject "a chibi warrior in green scale armour with a red plume" \
-  --describe-file $SKILL/templates/beats/walk.txt --frames 39 --seed 808080
+  --storyboard $PROJ/beats/walk.storyboard.json
 ```
 
 If the character wields something, do not describe it into the proxy — copy the
@@ -211,16 +267,25 @@ Two things the studio does that are worth knowing before the first run:
   [`references/studio.md`](references/studio.md#project-archive--保存工程--导入工程).
   Collapsed, the pool is single-direction again.
 
-## Every delivery plays the render
+## Every delivery plays the render — and asks nothing
 
 The mp4 is part of the answer, not a byproduct. After each render the clip is put on screen
-(`videos/<action>_vNN_<view>.mp4`), and the final delivery leads with it — clip → all-views
-GIF → sheet + atlas numbers → studio URL. A path printed in prose is not a delivery, and the
+(`videos/<action>_vNN_<view>.mp4`), and the final delivery leads with it — clip → 分镜表 →
+all-views GIF → sheet + atlas numbers → studio URL. A path printed in prose is not a delivery, and the
 GIF is not a stand-in: 10 fps quantisation eats exactly the drift the clip exists to show.
 `SKILL.md` states this as a hard rule; see *Non-negotiable: the video goes on screen*.
 
+The clip is shown, not submitted for approval. There is no "动作对不对？" between
+the render and the picking: `qc.py` gates the batch, one automatic re-render is
+allowed for the mechanical failure class (clipping → smaller coverage, fresh
+folder), and the run continues to the studio. A user who disagrees re-runs the
+skill — one command, and the board still holds what was tried.
+
 ## Rules that save renders
 
+- **Write the script before the render.** A beat out of order, two actions in one beat, a
+  `TODO` subject, a loop with no close sentence — `storyboard.py check` finds them for free, and
+  `generate.py` refuses to submit a board that fails it.
 - **The frame is a crop, and H3 copies it.** A reference tight to its own canvas teaches the model
   that the canvas edge is where the character ends — the first outward sword swing comes back as a
   stump. In one real run 29 of 39 front frames had the blade and plume cut flat. `prep_ref.py`
@@ -232,6 +297,9 @@ GIF is not a stand-in: 10 fps quantisation eats exactly the drift the clip exist
 - **A transparent PNG gives a black first frame.** H3 echoes the reference as frame 1; compositing
   onto the key colour (which `prep_ref` does) is what removes it.
 - **One shared seed per batch.** Mixed seeds give up to 33% stride spread across views; a shared seed brings it to ~9%.
+- **Everything shared lives in one file.** Seed, frames, key, coverage, limits and the beats come from
+  the storyboard, not from four sets of flags — and the cross-view gate fails the batch when the
+  directions end up at different scales, instead of leaving it for the turn animation to reveal.
 - **Never render both sides** — mirror one, so the two directions cannot desync.
 - **`length % 17 == 5`** — 5, 22, 39, 56, 73, 90, 107, 124. 56 = two full strides at 24 fps.
 - **H3 drops negations.** "no third sword" produces more swords — phrase positively.

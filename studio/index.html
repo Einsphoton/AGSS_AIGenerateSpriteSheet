@@ -3427,7 +3427,7 @@ function exportSheet() {
   try {
     const sh = buildSheet();
     if (!sh) return toast('时间轴里没有帧', true);
-    const { canvas:cv, atlas, W, H, cols, rowCount, cellW, sc, rows } = sh;
+    const { canvas:cv, atlas, W, H, cols, rowCount, cellW, cellH, sc, rows } = sh;
 
     const m = $('#modal'), mc = $('#mCanvas');
     mc.width = W; mc.height = H;

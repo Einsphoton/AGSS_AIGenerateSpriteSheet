@@ -1,0 +1,70 @@
+{
+ "schema": "pixel-sprite-storyboard/1",
+ "action": "attack",
+ "label": "攻击一次",
+ "kind": "one-shot",
+ "note": "",
+ "subject": "a chibi warrior in green scale armour with a tall red horsehair plume and a long red cape, one silver broadsword in each hand",
+ "fps": 24,
+ "frames": 39,
+ "seed": 808080,
+ "key": "auto",
+ "coverage": "auto",
+ "limits": [
+  "arms",
+  "torso",
+  "legs",
+  "cape",
+  "plume"
+ ],
+ "invariants": [
+  "identical proportions, colors and costume details in every frame",
+  "the camera is locked off for the whole clip",
+  "the weight stays over the feet and a planted foot never slides",
+  "every beat lands at its stated second, in every direction"
+ ],
+ "beats": [
+  {
+   "frac": 0.0,
+   "mark": "beat 1",
+   "motion": "the character stands in a guard stance with both blades angled out and down beside the hips."
+  },
+  {
+   "frac": 0.1231,
+   "mark": "beat 2",
+   "motion": "both arms lift and raise the two swords high overhead, the elbows bent, the torso leaning back, the weight settling on the rear foot."
+  },
+  {
+   "frac": 0.3692,
+   "mark": "beat 3",
+   "motion": "both arms drive forward and chop straight down in one fast arc, the two blades held parallel and side by side, one on the left of the body and one on the right, the front foot stepping forward and planting, the torso pitching forward.",
+   "see": {
+    "front": "both blades come down in front of the body and stop at hip height, the plume snapping forward",
+    "back": "both shoulders drop as the cape billows out and settles behind the legs",
+    "right": "the two blades sweep past the chest edge and stop in front of the leading knee"
+   }
+  },
+  {
+   "frac": 0.6154,
+   "mark": "beat 4",
+   "motion": "both blades stop at hip level in front of the body with the tips pointing down at the ground, the body crouched into the follow-through."
+  },
+  {
+   "frac": 0.8308,
+   "mark": "beat 5",
+   "motion": "the arms lift the blades back up and the torso straightens into the guard stance."
+  }
+ ],
+ "close": "The final pose matches the opening pose so the attack can be chained.",
+ "views": {
+  "front": {
+   "anchor": "the green scale chest plate, both shoulder guards and the face"
+  },
+  "back": {
+   "anchor": "the red cape panel covering the whole back, the plume from behind"
+  },
+  "right": {}
+ },
+ "renders": [],
+ "seconds": 1.625
+}

@@ -20,7 +20,7 @@ about the motion before paying for the character.
 | must stay identical | may change |
 | --- | --- |
 | `--seed` | `--views` (mannequin views → character views) |
-| the beat text (`--describe-file`) | `--subject` |
+| the beat text (`--describe-file` / the storyboard) | `--subject` |
 | `--frames`, `--size` | `--anchor` (it names what the camera sees, and the two passes see different things) |
 | `--coverage`, `--key` | |
 
@@ -28,11 +28,16 @@ Change any of the first column and you are not re-using a motion, you are
 rendering a second unrelated clip and hoping. This is the same reason
 `references/pitfalls.md#seeds` exists: H3 picks its own tempo per seed.
 
-`--key` is in that column for a subtler reason: it changes the *wording* of the
-prompt (the backdrop is named in the constraints), and a green key vs a magenta
-key is a different sentence. Wood on magenta and green armour on green is the
-normal case — so pass `--key` explicitly and identically in both passes rather
+**With a storyboard, the first column stops being something to remember.** `seed`,
+`frames`, `coverage`, `key` and the beats all come from the board in both passes;
+only `--views` and `--subject` are on the command line. That is now the
+recommended way to run route B — see `references/storyboard.md`.
+
+`--key` still deserves attention: `auto` picks per reference, and wood on magenta
+vs green armour on green are different answers. If the two references have
+different palettes, pass `--key` explicitly and identically in both passes rather
 than letting each one auto-pick.
+
 
 ## 1. Get a mannequin reference
 
@@ -108,33 +113,34 @@ crouch — and belongs in `PROMPT.txt` territory, not in `--weapon`.
 
 ```bash
 python $SKILL/scripts/generate.py --views $PROJ/views_proxy \
-  --out $PROJ/frames/${ACTION}_proxy --action $ACTION \
-  --views-wanted front,back,right --frames 39 --seed 808080 \
-  --describe-file $PROJ/beats/$ACTION.txt \
+  --out $PROJ/frames/${ACTION}_proxy \
+  --storyboard $PROJ/beats/$ACTION.storyboard.json \
   --subject "a plain wooden artist's mannequin, empty hands, no weapon"
 ```
 
 Match the `--subject` to the variant you copied: `a plain wooden artist's
-mannequin holding one short sword in its right hand` for `--weapon sword`, and
-so on. The proxy pass and the character pass must agree about what is in the
+mannequin holding one short sword in its right hand` for `--weapon sword`, and so
+on. The proxy pass and the character pass must agree about what is in the
 hands, or the second pass spends its attention removing a prop that is no longer
 there.
 
-Put the beats in a file — this text is going to be typed twice, character for
-character, and a paraphrased second version will produce a different clip.
+Everything else — the seed, the frame count, the beats, the limits — comes from
+the board, so the second pass cannot drift from this one. Nothing to type twice,
+nothing to paraphrase.
 
-Show the clip to the user **now** (see *Non-negotiable* in SKILL.md) with the
-one question that matters: `动作对不对？起手—劈砍—收势是不是你要的节奏？`
-Iterating here is cheap and the clip is easy to read because there is no costume
-in the way. Do not proceed on a motion the user has not approved.
+Put the clip on screen (see *Non-negotiable* in SKILL.md) and **keep going**: this
+is the cheapest look at the motion the pipeline ever offers, so if QC flags it, or
+a limb is clipped, re-render *here* — one retry, on the cheap half — and then
+render the character pass. Do not stop to ask whether the motion is approved. A
+question costs the user a round trip; a re-run costs them one command, and
+`renders` in the board already records what was tried.
 
 ## 3. Character pass
 
 ```bash
 python $SKILL/scripts/generate.py --views $PROJ/views \
-  --out $PROJ/frames/${ACTION} --action $ACTION \
-  --views-wanted front,back,right --frames 39 --seed 808080 \
-  --describe-file $PROJ/beats/$ACTION.txt \
+  --out $PROJ/frames/${ACTION} \
+  --storyboard $PROJ/beats/$ACTION.storyboard.json \
   --subject "a chibi warrior in green scale armour, dark grey helmet, a tall red
   horsehair plume, a long red cape, one silver broadsword in each hand" \
   --limits "arms,torso,legs,cape,plume"
@@ -142,10 +148,11 @@ python $SKILL/scripts/generate.py --views $PROJ/views \
 
 `--subject` comes from the character reference, not from the user's words — it is
 the only place the costume is described, and the proxy pass proves H3 will ignore
-costume details if the subject line is vague.
+costume details if the subject line is vague. `--limits` overrides the board for
+this pass only; prefer editing `limits` in the board, where both passes read it.
 
 The character pass is *the* pass. From here it is the normal pipeline: QC (step
-3b), mirror, manifest, studio.
+3b, including the cross-view scale gate), mirror, manifest, studio.
 
 ## 4. Still the studio
 

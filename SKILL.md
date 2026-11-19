@@ -2,10 +2,10 @@
 name: pixel-sprite-sheet
 display_name: 像素角色 Sprite Sheet 生产线
 display_name_en: Pixel Sprite Sheet Pipeline
-description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。使用前先询问用户走哪条路线：①直接渲染目标角色（一步到位）；②先渲染人偶代理动作，再用同一 seed 和同一套节拍把人偶替换成目标角色（两步，复杂角色动作更干净）。渲染前会做朝向审计（check_facing.py）：参考图正面和背面若是同一张图，视频模型会分不清朝向、动画中途转身，必须先让两侧在材质上区分开（内置人偶已按此设计：正面皮革胸带+铜扣，背面皮革背板+X 拼缝+深色后脑，轮廓完全不变）。路线②的人偶默认**空手**——道具会被角色那一遍继承，所以除长柄/弓等"武器即动作"的情况外不要往代理图里放武器（templates/mannequin/weapons/ 带 sword / dual-sword / staff / bow 变体）。之后负责切图 → 参考图补白与幕布（防裁切、防首帧黑底）→ MiniMax H3 图生视频（ComfyUI）→ 帧级质检（边缘裁切/空帧/幕布）→ Sprite Sheet Studio 抠图与逐帧挑拣 → 导出 PNG + Atlas；每次渲染的原始视频归档到 videos/ 并带版本号，且每次交付都会把源视频直接放进对话播放（不只给路径）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画 / 背面动画朝向不对"时使用。
-description_en: Generate pixel-game character animation sprite sheets from a 4-view character reference. The user supplies view images and a one-line description of the animation (walk, run, attack, cast, hurt, jump, ...); the skill runs split → MiniMax H3 image-to-video (ComfyUI) → chroma key → frame picking → export PNG + atlas, archives every render's source clip into a version-numbered videos/ folder, and ships an interactive Sprite Sheet Studio that imports video, animated GIF and PNG (PNGs are appended to the candidate pool), reloads any archived version, and previews all four directions at once over a switchable backdrop. Use when asked to turn a character into a sprite sheet, walk cycle, or 2D game animation frames.
-description: Generate pixel-game character animation sprite sheets from a 4-view character reference. Use when asked to turn a character into a sprite sheet, walk cycle, attack/cast/hurt animation, or 2D game animation frames — including when a back-view animation came out facing the wrong way. Always ask first whether to animate the target character directly or to block the motion with a mannequin proxy and re-render it onto the character. The bundled proxy has empty hands on purpose — the character pass inherits props as readily as silhouette, so a weapon goes into the reference only when the weapon is the motion (per-weapon variants ship in templates/mannequin/weapons/). Runs a facing audit (check_facing.py: front and back must differ in material or the video model loses the orientation) → split → reference prep → MiniMax H3 (ComfyUI) → chroma key → frame QC → studio picking → PNG + atlas, archives source clips under version numbers in videos/, and ships an interactive Sprite Sheet Studio (imports video / GIF / PNG, four-direction preview, switchable backdrop).
-version: 1.7.0
+description_zh: 从一张角色四视图生成像素游戏角色动画 Sprite Sheet。流程固定为「先写分镜脚本，再渲染」：storyboard.py 把这次动画的节拍、每个节拍的精确秒数、每个方向应该看到的证据、以及必须四个方向共用的 seed / 帧数 / 键色 / coverage / limits / subject 写进一个 JSON，generate.py 只读这一份文件——所以正面、背面、侧面是同一次表演的三个机位，而不是三段各自发挥的动画。之后负责切图 → 参考图补白与幕布 → MiniMax H3 图生视频（ComfyUI）→ 帧级质检（边缘裁切/空帧/幕布）+ 跨方向一致性（比例是否一致、帧数是否一致）→ Sprite Sheet Studio 抠图与逐帧挑拣 → 导出 PNG + Atlas；每次渲染归档到 videos/ 带版本号。全程**不询问效果**：质检不过就自动重渲一次（更小 coverage + 新版本号）再继续，用户觉得不行会自己重跑。路线选择（①直接渲染角色 / ②先人偶代理再换角色）只在开头问一次，用户说过"直接做"就直接按参考图复杂度自动选。渲染前做朝向审计（check_facing.py）：参考图正面和背面若是同一张图，视频模型会分不清朝向、动画中途转身。路线②的人偶默认**空手**——道具会被角色那一遍继承（templates/mannequin/weapons/ 带 sword / dual-sword / staff / bow 变体）。当用户要求"把角色做成 sprite sheet / 走路循环 / 动画帧序列 / 2D 游戏角色动画 / 背面动画朝向不对 / 分镜脚本"时使用。
+description_en: Generate pixel-game character animation sprite sheets from a 4-view character reference. A storyboard script (beats with exact seconds, per-view evidence, and one shared seed/frames/key/coverage/limits/subject) is written first and every direction is rendered from that one file, so front/back/side are three camera passes of one performance instead of three unrelated clips; then split → facing audit → reference prep → MiniMax H3 image-to-video (ComfyUI) → per-view QC plus a cross-view consistency gate (scale and frame count must agree) → chroma key → frame picking → PNG + atlas, with every render archived under a version number in videos/ and an automatic single re-render when QC fails (no mid-run approval questions). Use when asked to turn a character into a sprite sheet, walk cycle, or 2D game animation frames, or when a storyboard/beat sheet is wanted before rendering.
+description: Generate pixel-game character animation sprite sheets from a 4-view character reference. Two phases, in this order — (1) write the storyboard — one JSON holding the beats with exact seconds, what each direction must show at each beat, and the parameters every view shares (seed, frames, key, coverage, limits, subject); (2) render all directions from that file, so character, motion and rhythm cannot drift between front/back/side. Then MiniMax H3 (ComfyUI) → per-view frame QC plus a cross-view scale/frame-count gate → chroma key → Sprite Sheet Studio → PNG + atlas, with versioned clips in videos/. Never stops to ask whether the motion looks right — a hard QC failure triggers one automatic re-render (smaller coverage, new version) and the run continues; the user re-runs the skill if they disagree. The A/B route (direct character vs. mannequin proxy first) is the only question asked, and it is auto-decided when the user has said "just do it". The bundled proxy has empty hands on purpose — an inherited prop is worse than a missing one. Runs a facing audit (check_facing.py — front and back must differ in material or the video model loses the orientation) before spending renders.
+version: 1.8.0
 ---
 
 # Pixel Sprite Sheet Pipeline
@@ -14,9 +14,23 @@ Turn a character reference sheet into an engine-ready animation sprite sheet,
 driven by a plain-language description of the animation.
 
 ```
-4-view sheet → check_facing → split_views → prep_ref → generate (H3) → qc → studio (key+pick) → PNG + atlas
-   切图        朝向审计       四方向 PNG  → 补白·幕布 → 帧序列/videos → 边缘质检 → 抠图·挑帧   → 导出
+分镜脚本 → check_facing → split_views → prep_ref → generate (H3) → qc + 跨方向 → studio (key+pick) → PNG + atlas
+storyboard.py  朝向审计     四方向 PNG  → 补白·幕布 → 帧序列/videos →   边缘/比例质检   → 抠图·挑帧    → 导出
 ```
+
+Two rules shape everything below, and both are about not wasting an eight-minute
+batch:
+
+1. **The script comes before the render.** One storyboard JSON holds the beats,
+   their exact seconds, what each direction must show, and every parameter the
+   views share. `generate.py --storyboard` reads it, so front, back and side are
+   three camera passes of one performance — not three unrelated clips that
+   happen to feature the same character.
+2. **No mid-run approval.** Nobody is asked "动作对不对？" between the render and
+   the picking. QC decides, one automatic re-render happens if a structural
+   check fails, and the run continues to the studio. If the result is wrong, the
+   user re-runs the skill — a question costs them a round trip, the re-run costs
+   them one command.
 
 `check_facing` is not optional and not cosmetic: if the reference's front and back
 are the same picture, every back-view render is wasted, because the model turns
@@ -25,7 +39,7 @@ the figure around mid-clip. See *Facing* below.
 ## Step 0 — Ask which route, before anything else
 
 There are two ways to get a clip of *this* character, and they cost very
-different amounts. Ask; do not pick for the user.
+different amounts. Ask once, here, and nowhere else.
 
 |  | **A — direct** | **B — proxy pass** |
 | --- | --- | --- |
@@ -45,6 +59,12 @@ Say what each costs in one line; do not bury it.
 - **A** → continue to step 1 below.
 - **B** → read `references/proxy-pass.md`. It is the same pipeline run twice,
   with only `--views` and `--subject` changing between the passes.
+
+**If the user has already said "直接做 / 别问我 / just generate it", skip the
+question and decide.** Route B when the reference shows a cape, a plume, loose
+cloth or two props; route A otherwise. Print the choice and the reason in one
+line, then continue — this is the only decision in the pipeline the pipeline
+itself cannot make from the pixels.
 
 **The proxy has empty hands, and that is deliberate.** The mannequin pass answers
 "does the body motion read?"; the prop belongs to the character pass, which gets
@@ -74,6 +94,11 @@ a playable card. This holds at two moments:
    teaches nobody anything.
 2. **The moment you deliver** (see *Presenting the result*) — clip first, then
    the GIF, then the sheet, then the studio URL.
+
+Showing the clip is not the same as asking about the clip. Show it, say in one
+line what to look for, and carry on with the picking pass in the same turn. A
+question here trades the user's time for a decision the pipeline can already make
+from `qc.py`.
 
 **每次交付都必须把视频直接放进对话里播出来 —— 只给路径不算交付。**
 
@@ -136,21 +161,22 @@ Do **not** use it for: single illustration generation (use an image model),
 
 ## What you need from the user
 
-1. **The route** — A (render the character directly) or B (mannequin first, then
-   the character). Ask before anything else; see *Step 0*.
-2. **Reference image(s)** — one sheet with 4 views (front / back / side), or
+1. **Reference image(s)** — one sheet with 4 views (front / back / side), or
    separate files. Names or positions both work; `split_views.py` auto-detects.
    **The front and back must be visibly different materials** — a detail on the
    back, a panel, lacing, an emblem, a stained nape. If they are not, say so
    before rendering; see *Facing* below.
-3. **The animation, in words** — "走路" / "跑步" / "攻击一次" / "施法" /
-   "受击后仰" / anything else. Pick a preset if it matches, otherwise pass the
-   description through as `--describe`.
-4. **Optional**: frame count (default 56), which views (default front/back/right).
+2. **The animation, in words** — "走路" / "跑步" / "攻击一次" / "施法" /
+   "受击后仰" / anything else. That is enough to write the storyboard: a preset
+   when it matches, otherwise 3–5 beats you write yourself.
+3. **Optional**: frame count (default 56), which views (default front/back/right).
 
-Do not ask about seeds, prompt wording, model files, or ComfyUI paths — those
-have sane defaults. Ask only about the route, and about the reference layout when
-it is genuinely ambiguous.
+**The route (A direct / B proxy) is the only question worth asking, and only
+once** — see *Step 0*. Do not ask about seeds, beat wording, model files or
+ComfyUI paths; the board's defaults are measured ones. Do not ask whether the
+motion looks right at all: render, gate it with QC, hand over the clips and the
+sheet. The user iterates by re-running the skill, not by answering questions
+mid-run.
 
 ## Environment check (do this first, every run)
 
@@ -190,11 +216,14 @@ to it.
 ```bash
 SKILL=~/.workbuddy/skills/pixel-sprite-sheet
 PROJ=./sprite-project          # any folder the user is happy with
-mkdir -p $PROJ/{views,frames,out,videos}
+mkdir -p $PROJ/{views,frames,out,videos,beats}
 ```
 
 `videos/` is not a cache — it is the deliverable folder the user will re-open
 later. Every render drops its mp4 there under a version number (see step 3).
+`beats/` holds the storyboard, which is the second thing worth keeping next to
+the reference: it is what a re-run edits, and it is the only record of what the
+last render was trying to do.
 
 ### 1. Split the reference into per-view PNGs
 
@@ -251,67 +280,120 @@ python $SKILL/scripts/prep_ref.py $PROJ/views --action attack
 files; `--coverage 0.42` if a clip still clips, `--no-prep` to send the reference
 untouched (rarely what you want).
 
-### 2. Describe the animation
+### 2. Write the storyboard（分镜）— before any render
 
-Listing the presets costs nothing and tells you whether you even need a custom
-prompt:
-
-```bash
-python $SKILL/scripts/make_prompt.py --help       # lists walk/run/idle/attack/cast/hurt/jump
-```
-
-For a preset:
+One JSON file is the whole animation decision. Write it, read it, *then* render.
 
 ```bash
-python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/walk \
-  --action walk --subject "a chibi armored warrior with a red plume" \
-  --frames 56
+# a preset that already reads well
+python $SKILL/scripts/storyboard.py init --action walk \
+  --subject "a chibi armored warrior with a red plume and a long red cape" \
+  --out $PROJ/beats/walk.storyboard.json
+
+# anything else: write the beats, then convert them
+python $SKILL/scripts/storyboard.py init --action slash --kind one-shot \
+  --from $PROJ/beats/slash.txt --out $PROJ/beats/slash.storyboard.json
+
+python $SKILL/scripts/storyboard.py check $PROJ/beats/walk.storyboard.json   # PASS / warn / ERROR
+python $SKILL/scripts/storyboard.py table $PROJ/beats/walk.storyboard.json --out $PROJ/beats/walk.md
 ```
 
-For anything not in the presets, write the beats yourself. `--describe` takes a
-free-form sentence; the timing (beat structure) is what H3 actually responds to:
+The board holds four things, and the split matters:
+
+| field | what it is | who reads it |
+| --- | --- | --- |
+| `beats[].frac` + `beats[].motion` | the extremes and *when* they happen, as sentences | every view, verbatim, the same sentence at the same second |
+| `beats[].see.<view>` | optional: what that beat looks like from this camera ("the blade sweeps past the chest edge") | only that view's prompt |
+| `views.<view>.anchor` | what the camera can see in this direction (the facing evidence) | only that view's prompt |
+| `seed` `frames` `key` `coverage` `limits` `subject` `invariants` | the parameters that must be identical in every direction | `generate.py`, which refuses to vary them per view |
+
+**Write 3–5 beats, name extremes, not paths.** "the arm drawn back across the
+body" and "the arm whipped forward in a flat arc" interpolate correctly;
+"the arm moves smoothly" does not. The timings are what H3 actually locks onto,
+which is why they live in the file as fractions (0.00 / 0.30 / 0.60 / 0.85) and
+not as frame numbers — change `--frames` later and the performance rescales
+instead of being truncated.
+
+`check` is the cheap gate. It catches the mistakes that cost a batch, and each
+message says what to write instead: beats out of order, a beat too short to read
+as a pose, a clip whose last beat lands at 55% (the model then *holds* the final
+pose for a second), two actions in one beat, a `subject` still containing "TODO",
+a negation ("no third sword" grows a third sword — H3 drops negations), a
+`diagonal` view that does not exist, a loop with no close sentence, coverage 0.9.
+
+Then read the prompts once — they are the actual input, and they cost nothing:
 
 ```bash
-python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/slash \
-  --action attack --views-wanted right --frames 56 \
-  --describe "a fast horizontal slash from right to left, the torso rotating
-  into it, the leading foot planting, then a short recovery back to guard"
+python $SKILL/scripts/storyboard.py prompts $PROJ/beats/walk.storyboard.json \
+  --out-dir $PROJ/frames/walk/_prompts
 ```
 
-Keep the beats in a file once they are worth keeping — `--describe-file beats/slash.txt`
-beats shell-quoting a paragraph, and a proxy run **must** reuse the identical
-text (route B, `references/proxy-pass.md`).
+Three prompt details are not optional and not obvious:
 
-**Write `--subject` from the reference image, not from the user's words alone.**
+**`subject` is written from the reference image, not from the user's words.**
 It is the only place the character's identity (armour, colours, weapon count,
 silhouette) is stated, and H3 uses it to hold the design across frames. One
 sentence, concrete nouns, no adjectives like "cool" or "beautiful".
 
-**The key colour comes from the reference too.** `generate.py` scores chroma
-green / magenta / cyan against the character's own pixels and picks the one that
-does not already exist in the costume — a green armoured character shot against
-green loses its armour to the key. It prints the choice and the clash
-percentage; `--key magenta` overrides. Whatever it prints, key the frames with
-the same colour in the studio.
+**`--limits` must name the loose pieces your character actually has.** Presets
+deliberately avoid parts not every character has (a slime has no cape, a mech has
+no plume), so a caped character needs `"limits": ["legs","arms","torso","cape","plume"]`
+or the cape stays rigid while the body walks.
 
-Presets deliberately avoid naming character parts that not every character has
-(a slime has no cape, a mech has no plume). If your character *does* have loose
-pieces that should flap, add them explicitly:
+**The key colour comes from the reference, not from the board.** `generate.py`
+scores chroma green / magenta / cyan against the character's own pixels and picks
+the one that does not already exist in the costume — a green armoured character
+shot against green loses its armour to the key. Leave `"key": "auto"` unless you
+have a reason; it prints the choice and the clash percentage. Whatever it prints,
+key the frames with the same colour in the studio.
+
+Full schema, worked example and the failure catalogue: `references/storyboard.md`.
+
+### 2b. The consistency contract — what the board is actually for
+
+H3 has no memory between calls. Four directions are four independent samples,
+and everything that makes them *not* one performance has a name:
+
+| symptom | cause | the board field that fixes it |
+| --- | --- | --- |
+| the front walks at a different tempo than the back | different seed → up to 33% stride spread | `seed` (one value, every view) |
+| the side view does the motion in a different order | paraphrased beat text | `beats` (one list, verbatim, every view) |
+| one direction is zoomed differently | different `coverage` / `frames` | `coverage`, `frames` |
+| the cape flaps in one view only | `limits` named the cape but not in another pass | `limits` |
+| the back view quietly turns around | the anchor does not name what the camera sees | `views.back.anchor` |
+| a beat reads wrong from the side ("both hands push forward" seen edge-on) | the projection was left to inference | `beats[].see.right` |
+
+The prompt states the contract explicitly — every view is told that its beats,
+timing, weight and silhouette are identical to the other passes, and that each
+beat time is exact. **The claims are then checked**, not trusted: `qc.py` gates
+each view on its own, and `generate.py` adds a cross-view gate that fails the
+batch when the four directions disagree on the character's size by more than 18%
+(they cannot share one cell size) or notes a spread over 8% and mismatched frame
+counts. A fail verdict is recorded in the board's `renders` table, so the next
+run can see what went wrong instead of re-guessing.
+
+Rhythm cannot be measured from a still — that part is the board's job (same
+beats, same seed, same frames), and the clip is the only thing that proves it.
+
+### 3. Render every direction from that board
 
 ```bash
---limits "legs,arms,skirt,cape,plume"
+python $SKILL/scripts/generate.py --views $PROJ/views --out $PROJ/frames/walk \
+  --storyboard $PROJ/beats/walk.storyboard.json
 ```
 
-Without `--limits`, only `legs / arms / torso` (the parts every biped shares)
-are declared movable.
+No `--seed`, no `--frames`, no `--action` on the command line: they come from the
+board, and the run prints which of the three places each value came from
+(`board` / `flag` / `default`) so a stale flag can never quietly split the batch.
+Flags still win when you pass them — that is for experiments, not for the
+delivery run.
 
-### 3. Wait for the render
-
-`generate.py` submits all requested views in **one batch with one seed**, then
-waits. That is deliberate — see `references/pitfalls.md#seeds`. A 56-frame
-768px clip takes roughly 2–4 minutes per view on a 5090. Do not poll with
-`sleep`; the script prints queue position itself. Run it in the background if
-the harness supports it and check the log.
+`generate.py` validates the board first and refuses to submit a board that fails
+`check`. Then it submits all requested views in **one batch with one seed** and
+waits. That is deliberate — see `references/pitfalls.md#seeds`. A 56-frame 768px
+clip takes roughly 2–4 minutes per view on a 5090. Do not poll with `sleep`; the
+script prints queue position itself. Run it in the background if the harness
+supports it and check the log.
 
 Output:
 
@@ -342,18 +424,19 @@ python $SKILL/scripts/videos.py list --dir $PROJ/videos      # v01 walk 56帧 vi
 Pass `--videos DIR` to put them elsewhere, `--no-archive` to keep the old
 behaviour (mp4 left next to the frames).
 
-**Stop here and put the clips on screen.** Before step 4, hand every
+**Put the clips on screen the moment they land — then keep going.** Hand every
 `videos/<action>_v<NN>_<view>.mp4` from this batch to the file-presentation tool
-so the user watches the render while you continue setting up the studio. One
-sentence of what to look for (`腿有没有打滑 / 有没有多出来的手 / 首尾能不能接上`)
-turns that clip into a decision: keep it, or re-render with a fixed prompt. Ask
-for the verdict before picking frames — a re-render is 2–4 minutes, a wasted
-picking pass is an hour.
+so the user watches the render while you set up the studio. One sentence of what
+to look for (`腿有没有打滑 / 有没有多出来的手 / 首尾能不能接上`) turns the clip
+into evidence; **do not ask a question and do not wait for an answer.** A render
+is a deliverable, not a checkpoint. If it is genuinely broken, QC already said so
+in 3b and the fix is a re-render — a question only postpones that.
 
 ### 3b. Check the frames before picking any of them
 
 `generate.py` runs this at the end of every batch and prints a `FAIL`/`PASS`
-block; run it yourself after any re-render or hand-staged reference:
+block plus a cross-view verdict; run it yourself after any re-render or
+hand-staged reference:
 
 ```bash
 python $SKILL/scripts/qc.py frames $PROJ/frames/walk --key '#FF00FF'
@@ -363,15 +446,34 @@ What it measures, and what each failure actually means:
 
 | check | fail means | fix |
 | --- | --- | --- |
-| **border** — longest unbroken run on the four frame edges | a blade, plume or foot is leaving the frame; that limb is cut in the clip | re-render with `--coverage 0.42` — H3 copies the reference framing |
+| **border** — longest unbroken run on the four frame edges | a blade, plume or foot is leaving the frame; that limb is cut in the clip | re-render with a smaller coverage (0.42) into a fresh `--out` — H3 copies the reference framing |
 | **black frames** | the reference PNG had alpha and H3 echoed it on black | `prep_ref.py` (automatic in `generate.py`) |
 | **empty frames** | a frame with no subject — usually a bad first/last frame | drop it while picking, or re-render |
 | **body height swing** | H3 zoomed mid-clip; shortening the clip usually fixes it | lower `--frames`, keep the camera wording |
 | **backdrop purity** | the corners are not one flat colour — wrong key colour, or a ground plane crept in | check `--key`; a ground plane cannot be keyed away |
+| **cross-view scale** | the directions disagree on how big the character is by >18% — the views cannot share one cell size | re-render; do not rescale, that hides a per-view zoom |
 
 A note is not a failure: a couple of frames with a blade tip grazing the edge is
 normal for a wide arc. Ten or more means the framing is wrong, and picking
 around it just hides a stump in the sprite sheet.
+
+**Automatic retry — once, without asking.** A `FAIL` on `border` is the one class
+of failure with a known mechanical fix: H3 inherited too tight a crop from the
+reference. Re-run the same batch with `--coverage 0.42` (and the same board, so
+the seed and beats do not change) into a **fresh** `--out`
+(`frames/walk_r2`) — never into the folder holding the clipped frames, because
+the old frames and the new ones would be renumbered into one timeline. Record the
+attempt in the board and carry on to the studio with whichever version is
+cleaner:
+
+```bash
+python $SKILL/scripts/storyboard.py record $PROJ/beats/walk.storyboard.json \
+  --version 4 --attempt 2 --qc pass --coverage 0.42 --clip front=… 
+```
+
+Do not loop. One retry, then deliver with the failure named in one line — the
+user re-runs the skill if they want another pass, and `renders` in the board
+tells them (and the next run) exactly what was tried.
 
 ### 4. Mirror the side view
 
@@ -436,6 +538,11 @@ direction at a time, so a bare link shows one panel.
 point. The user wants to choose which frames go in the animation. If they ask
 you to export without opening the studio, use the defaults but say so.
 
+Opening the studio is the last step of the run, not another checkpoint: hand over
+the URL, say which direction is worth looking at first, and stop. Do not ask
+whether the picking result is acceptable — the user exports when they are happy
+and re-runs the skill when they are not.
+
 This holds for route B without exception: the mannequin pass is a motion sketch.
 The frames the user keys and picks are the *character* frames, and the proxy clip
 sits one version lower in `版本化视频` if they want to compare the two.
@@ -451,19 +558,21 @@ after every re-export — GIFs are static artifacts.
 
 ## Presenting the result
 
-Four artifacts, in this order, **every single time** — the video is not optional
+Five artifacts, in this order, **every single time** — the video is not optional
 and not last:
 
 | # | Artifact | How |
 | --- | --- | --- |
 | 1 | **The clip(s)** `videos/<action>_v<NN>_<view>.mp4` | pass the absolute paths to the file-presentation tool so they play as cards. One per rendered view; when that is three files, show all three — they are the same seed and the comparison is the point |
-| 2 | **The all-views GIF** `<name>_strip.gif` | from step 7 |
-| 3 | **The sheet** `out/<name>.png` + `<name>.json` | with cell size, sheet dimensions, columns × rows, frames per view |
-| 4 | **The studio URL** | last, so it does not get in front of the result |
+| 2 | **The 分镜表** `beats/<action>.md` | the beat table + the consistency contract + the `renders` history, from `storyboard.py table`. It is what the user edits when they want different motion next run |
+| 3 | **The all-views GIF** `<name>_strip.gif` | from step 7 |
+| 4 | **The sheet** `out/<name>.png` + `<name>.json` | with cell size, sheet dimensions, columns × rows, frames per view |
+| 5 | **The studio URL** | last, so it does not get in front of the result |
 
-Then state which version this batch is (`v03`) and where `videos/` lives. That
-folder answers "which render is this from", and the user should never have to
-grep `frames/` for an mp4.
+Then state which version this batch is (`v03`), where `videos/` lives, and — if
+QC raised anything — the one line that names it. That folder answers "which
+render is this from", and the user should never have to grep `frames/` for an
+mp4.
 
 Never do these:
 
@@ -473,6 +582,9 @@ Never do these:
   the clip is the proof it is the right product
 - present a drifting or half-finished animation as done. Name the direction that
   is missing or the part of the motion that broke, and let the clip say it.
+- **end the turn with a question about the animation.** Deliver, and let the user
+  decide whether to re-run; a "这样可以吗？" between the clip and the studio is
+  the one gate this pipeline removed on purpose.
 
 ## What the studio does that the scripts cannot
 
@@ -515,6 +627,9 @@ and says so. 56 is a good default: two full walk strides at 24 fps.
 - **Never spend a render on a reference that fails `check_facing`.** A back view
   that drifts is not a clip you can pick your way out of — the whole direction is
   unusable, so it is a re-render of every view with the seed shared again.
+- **Never spend a batch on a board that fails `check`.** A beat at 0.2 after one
+  at 0.5, two actions in one beat, a `TODO` in the subject — `check` finds them
+  for free, `generate.py` refuses to submit them.
 - Render **one** side view and mirror it.
 - Start at 39 or 56 frames. More frames = more candidates, not better motion.
 - Route B doubles the render count. Pay for it only when the character is busy
@@ -522,6 +637,9 @@ and says so. 56 is a good default: two full walk strides at 24 fps.
   mannequin, where a re-render is cheap and legible.
 - Never "fix" a clip by picking around a broken frame. A clipped sword or a
   zooming torso is a 2-minute re-render, not a picking problem.
+- One automatic retry per batch, then deliver. Two retries in a row on the same
+  check means the input is wrong (reference crop, facing, character design), and
+  a third render will not find that out.
 - If the character's legs are hidden by a long skirt/robe, read
   `references/pitfalls.md#legibility` before spending renders on it.
 
@@ -533,6 +651,10 @@ and says so. 56 is a good default: two full walk strides at 24 fps.
   model turn the figure around mid-clip; no prompt fixes it. Differ the two sides
   in material, keep the outline identical, and gate it with `check_facing.py`
   (`references/facing.md`).
+- **Direction drift** — the four views are four independent samples of H3, and
+  without a shared script they diverge: different tempo, different beat order,
+  different scale. The storyboard (`references/storyboard.md`) is the fix, and
+  the cross-view gate in `generate.py` is how you find out it did not work.
 - **Framing** — H3 copies the reference's crop. A figure that fills its canvas
   comes back with the sword cut off the moment it swings. Pad to 48–58% before
   rendering (`prep_ref.py`, automatic in `generate.py`).
@@ -556,14 +678,17 @@ and says so. 56 is a good default: two full walk strides at 24 fps.
 
 ```
 scripts/
+  storyboard.py    分镜: beats + per-view evidence + the shared render parameters,
+                   as one JSON — init / check / table / prompts / plan / record
   h3client.py      ComfyUI H3 client (build / submit / wait / collect, HTTP upload staging)
   check_facing.py  front vs back distinguishability audit (material_tv, silhouette, profiles)
   mannequin.py     draws the 4-view proxy from one skeleton (material-coded front/back,
                    --weapon none|sword|dual-sword|staff|bow, --all for every variant)
   split_views.py   sheet → per-view PNGs
   prep_ref.py      reference → square key-coloured canvas with margins (anti-crop, anti-black-frame)
-  make_prompt.py   description → H3 prompt (presets + custom)
-  generate.py      batch: prep → all views, one seed, prompts + frames + manifest + QC
+  make_prompt.py   beats / storyboard → H3 prompt (presets + custom)
+  generate.py      batch: prep → all views from one storyboard, one seed,
+                   prompts + frames + manifest + QC (per view and cross-view)
   qc.py            quality gate: crop / black / empty frames / backdrop, both before and after
   videos.py        versioned archive of the source clips (videos/index.json)
   mirror.py        right → left
@@ -581,10 +706,14 @@ templates/
                    staff, bow. Copy the one that matches, or mannequin.py --weapon <name>.
                    Empty hands is the default because a prop in the reference is a prop
                    the character pass inherits
-  beats/           beat text worth reusing (same file in both passes of a proxy run):
-                   walk.txt (unarmed, neutral), attack-dual-sword.txt (needs the
-                   dual-sword proxy)
+  beats/           storyboards worth reusing — start by copying one:
+                   walk.storyboard.json (preset, 4 beats, loop) and
+                   attack-dual-sword.storyboard.json (5 beats, needs the dual-sword
+                   proxy) — plus the plain beat text they were built from:
+                   walk.txt (unarmed, neutral), attack-dual-sword.txt
 references/
+  storyboard.md    the schema, how to write beats, the consistency contract,
+                   and what each `check` message is telling you
   facing.md        front vs back: why the model loses the orientation, and the fix
   proxy-pass.md    route B: mannequin pass → character pass, and what may not change
   studio.md        full studio interaction model
